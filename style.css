@@ -1,0 +1,17 @@
+body {
+    background-color: #222;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin: 0; /* <--- 0に変更 */
+    font-family: 'Meiryo', 'Hiragino Kaku Gothic ProN', sans-serif;
+}
+
+canvas {
+    border: 1px solid #333;
+    background-color: white; /* JSで塗っていますが念のため */
+    box-shadow: 0 0 20px rgba(0,0,0,0.5);
+    
+    /* ★これを追加！指での操作時にスクロールやズームを禁止します */
+    touch-action: none; 
+}
