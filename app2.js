@@ -36,6 +36,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const BUTTON_FONT = "bold 20px 'Meiryo', sans-serif";
     const INSTRUCTION_FONT = "16px 'Meiryo', sans-serif";
 
+    // --- ★ログ設定（ここに入力してください） ---
+    // 操作ログ用 (再生・リセットの座標記録用)
+    const ACTION_LOG_URL = "https://script.google.com/macros/s/AKfycbyEY0cnE-qSG1KH3UUXpaEmbu4OLATEz9Rd3rIcR2omKeKROYsHdYAVFMC_CBVVnDh1qg/exec"; 
+
+    // アプリID (基礎=2)
+    const APP_ID = 2;
+
     // --- 正解データ設定 ---
     // 1物体版: 質量1.5kg (重力15N)
     const CORRECT_ANSWERS = [
@@ -43,7 +50,7 @@ document.addEventListener('DOMContentLoaded', () => {
             objectId: 'box1', 
             vectors: [
                 { name: "重力", fx: 0, fy: 15, startPosType: 'center' }, // 15N
-                { name: "床からの垂直抗力", fx: 0, fy: -15, startPosType: 'bottom+12,0' }, // -15N
+                { name: "床からの垂直抗力", fx: 0, fy: -15, startPosType: 'bottom+12,-5' }, // -15N
             ]
         }
     ];
@@ -133,6 +140,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     /** 物体の状態をリセット */
     function createObjectStates() {
+        // ★リセットログ送信 (矢印がある場合のみ)
+        if (box1Vectors && box1Vectors.length > 0) {
+            sendActionLog(0); // 0 = リセット
+        }
+
         if (validationTimer) clearTimeout(validationTimer);
 
         const box1Width = 120, box1Height = 120, box1Mass = 1.5;
@@ -151,6 +163,9 @@ document.addEventListener('DOMContentLoaded', () => {
     /** 加速度の計算 */
     function startSimulation() {
         if (isRunning) return;
+
+        // ★再生ログ送信
+        sendActionLog(1); // 1 = 再生
 
         // --- Box 1 (緑) ---
         const netForceVX1 = box1Vectors.reduce((sum, v) => sum + v.vx, 0);
@@ -202,48 +217,51 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.clearRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
         ctx.fillStyle = 'white';
         ctx.fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
-        
+       
+        // ユーザー名の表示
+        const userName = sessionStorage.getItem('physics_app_username') || "ゲスト";
+        ctx.fillStyle = '#555';
+        ctx.font = "14px 'Meiryo', sans-serif";
+        ctx.textAlign = "right";
+        ctx.fillText(`学習者: ${userName}`, SCREEN_WIDTH - 20, 30);
+        ctx.textAlign = "left"; 
+ 
         ctx.fillStyle = FLOOR_COLOR;
         ctx.fillRect(floorRect.x, floorRect.y, floorRect.width, floorRect.height);
 
-        // (3) 指示テキスト
+        // 指示テキスト
         ctx.fillStyle = 'black';
         ctx.font = INSTRUCTION_FONT;
-        ctx.fillText("質量1.5kgの緑色の物体にはたらく力を作図して再生ボタンを押してみましょう。", 300, 25);
-        ctx.fillText("100gの物体にはたらく力の大きさを1.0Nとする。また、灰色の床ははかりになっている。", 330, 45);
+        ctx.fillText("質量1.5kgの緑色の物体にはたらく力を作図して再生ボタンを押してみましょう。", 10, 25);
+        ctx.fillText("100gの物体にはたらく力の大きさを1.0Nとする。また、灰色の床ははかりになっている。", 10, 45);
 
-        // (4) 物体の描画
+        // 物体の描画
         box1.draw(ctx);
 
-        // --- (5) ベクトルの描画 ---
-        // ★修正: 「同じ始点座標」の場合のみカウントしてずらす
+        // ベクトルの描画（重なり対応）
         const startPosCounts = {}; 
 
         const drawWithOffset = (vectorList) => {
             vectorList.forEach(v => {
-                // 始点の座標をキーにする
                 const key = `${v.startPos.x},${v.startPos.y}`;
                 const count = startPosCounts[key] || 0;
                 
-                // ずらし量の計算（左右交互）
                 let offset = 0;
                 if (count > 0) {
-                    const gap = 12; // 黒点(半径4)が重ならないよう広めに確保
+                    const gap = 12; 
                     const sign = (count % 2 === 1) ? 1 : -1;
                     const multiplier = Math.ceil(count / 2.0);
                     offset = multiplier * gap * sign;
                 }
 
-                // X方向だけずらす
                 v.draw(ctx, offset, 0);
-
                 startPosCounts[key] = count + 1;
             });
         };
 
         drawWithOffset(box1Vectors);
      
-       // (6) 描画中のベクトル
+       // 描画中のベクトル
         if (isDrawingVector && vectorStartPos) {
             const snappedComponents = snapVectorComponents(vectorStartPos, currentMousePos);
             const snappedVX = snappedComponents.vx;
@@ -263,21 +281,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
             ctx.fillStyle = 'black';
             ctx.font = BUTTON_FONT;
-            // ★スナップ計算された「実際の矢印の先端」座標を使う
             ctx.fillText(magText, snappedEndPosX + 50, snappedEndPosY -20);
         }
 
-        // (7) 保存された力のテキスト
+        // 保存された力のテキスト
         forceTextStamps.forEach(t => t.draw(ctx));
 
-        // (8) 質量計算結果
+        // 質量計算結果
         if (showMassText) {
             ctx.font = BUTTON_FONT;
             ctx.fillStyle = 'black'; 
-            ctx.fillText(`灰色の床がはかる重さ: ${calculatedMass1.toFixed(2)} kg`, 150, 390);
+            ctx.fillText(`灰色の床がはかる重さ: ${calculatedMass1.toFixed(2)} kg`, 10, 390);
         }
 
-        // (9) ボタンの描画
+        // ボタンの描画
         drawButton(ctx, startButtonRect, START_BUTTON_COLOR_IDLE, "再生");
         drawButton(ctx, resetButtonRect, RESET_BUTTON_COLOR_IDLE, "リセット");
     }
@@ -291,10 +308,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         return [
             { x: centerX, y: centerY },    // 1. 中心
-            { x: centerX-12, y: rect.y },     // 2. 上辺中点
-            { x: centerX+12, y: rect.y + rect.height }, // 3. 下辺中点
-            { x: rect.x, y: centerY },     // 4. 左辺中点
-            { x: rect.x + rect.width, y: centerY } // 5. 右辺中点
+            { x: centerX-12, y: rect.y+5 },     // 2. 上辺中点
+            { x: centerX+12, y: rect.y + rect.height-5 }, // 3. 下辺中点
+            { x: rect.x+5, y: centerY },     // 4. 左辺中点
+            { x: rect.x + rect.width-5, y: centerY } // 5. 右辺中点
         ];
     }
 
@@ -313,7 +330,6 @@ document.addEventListener('DOMContentLoaded', () => {
         return nearestPoint;
     }
      
-    /** 矢印付きの線を描画（始点に黒点あり） */
     function drawVector(ctx, x1, y1, x2, y2) {
         if (x1 === x2 && y1 === y2) return;
         
@@ -391,23 +407,17 @@ document.addEventListener('DOMContentLoaded', () => {
                p.y >= rect.y && p.y <= rect.y + rect.height;
     }
     
-     /** * マウス/タッチ座標を統一して取得する関数 
-     * (getMousePos の代わりに使用)
-     */
     function getPos(e) {
         const rect = canvas.getBoundingClientRect();
         let clientX, clientY;
 
-        // タッチイベントかどうか判定
         if (e.touches && e.touches.length > 0) {
             clientX = e.touches[0].clientX;
             clientY = e.touches[0].clientY;
         } else if (e.changedTouches && e.changedTouches.length > 0) {
-            // touchend の場合は changedTouches を参照
             clientX = e.changedTouches[0].clientX;
             clientY = e.changedTouches[0].clientY;
         } else {
-            // マウスイベント
             clientX = e.clientX;
             clientY = e.clientY;
         }
@@ -418,14 +428,11 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     }
 
+    // --- イベントリスナーの登録 ---
 
-
-     // --- イベントリスナーの登録 (マウス & タッチ対応版) ---
-
-    // 共通の開始処理 (mousedown / touchstart)
     function handleStart(e) {
-        e.preventDefault(); // スクロール等のデフォルト動作を防止
-        const p = getPos(e); // ★修正: getMousePos -> getPos
+        e.preventDefault(); 
+        const p = getPos(e); 
         currentMousePos = p;
         targetObject = null;
         isDrawingVector = false;
@@ -442,7 +449,6 @@ document.addEventListener('DOMContentLoaded', () => {
         } 
     }
 
-    // 共通の終了処理 (mouseup / touchend)
     function handleEnd(e) {
         e.preventDefault();
         if (!isDrawingVector || !targetObject) {
@@ -452,7 +458,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         isDrawingVector = false;
-        const endPos = getPos(e); // ★修正
+        const endPos = getPos(e); 
         
         const snappedComponents = snapVectorComponents(vectorStartPos, endPos);
         const vx = snappedComponents.vx;
@@ -479,13 +485,11 @@ document.addEventListener('DOMContentLoaded', () => {
         targetObject = null;
     }
 
-    // 共通の移動処理 (mousemove / touchmove)
     function handleMove(e) {
         e.preventDefault();
-        currentMousePos = getPos(e); // ★修正
+        currentMousePos = getPos(e); 
         
         const p = currentMousePos;
-        // ホバーエフェクト（タッチデバイスではあまり意味がないが残しておく）
         if (isPointInRect(p, startButtonRect) || isPointInRect(p, resetButtonRect)) {
             canvas.style.cursor = 'pointer';
         } else {
@@ -503,42 +507,31 @@ document.addEventListener('DOMContentLoaded', () => {
     canvas.addEventListener('mousemove', handleMove, { passive: false });
     canvas.addEventListener('touchmove', handleMove, { passive: false });
 
-/**
-     * 指定されたタイプに対応する座標を返す（オフセット対応版）
-     * 例: 'center', 'top+10' (Yに+10), 'center+10,-5' (Xに+10, Yに-5)
-     */
     function getTargetPos(box, typeString) {
         const r = box.initialRect;
         const cx = r.x + r.width / 2;
         const cy = r.y + r.height / 2;
 
-        // 1. 文字列を「基本タイプ」と「オフセット部分」に分解する
-        // 例: "top+12" -> type="top", offsetStr="+12"
-        // 例: "center" -> type="center", offsetStr=""
         let type = typeString;
         let offsetX = 0;
         let offsetY = 0;
 
-        // "+" または "-" が含まれているかチェック
         const match = typeString.match(/^([a-z]+)(.*)$/);
         if (match) {
-            type = match[1]; // 'center', 'top' など
-            const offsetPart = match[2]; // '+12', '+10,-5' など
+            type = match[1]; 
+            const offsetPart = match[2]; 
 
             if (offsetPart) {
                 if (offsetPart.includes(',')) {
-                    // "x,y" 形式の場合 (例: +10,-5)
                     const parts = offsetPart.split(',');
                     offsetX = parseInt(parts[0], 10) || 0;
                     offsetY = parseInt(parts[1], 10) || 0;
                 } else {
-                    // 数値だけの場合 (例: +12) -> Y方向のオフセットとして扱う
                     offsetY = parseInt(offsetPart, 10) || 0;
                 }
             }
         }
 
-        // 2. 基本位置の決定
         let basePos = { x: cx, y: cy };
         switch (type) {
             case 'center': basePos = { x: cx, y: cy }; break;
@@ -549,7 +542,6 @@ document.addEventListener('DOMContentLoaded', () => {
             default:       basePos = { x: cx, y: cy }; break;
         }
 
-        // 3. オフセットを加算して返す
         return {
             x: basePos.x + offsetX,
             y: basePos.y + offsetY
@@ -612,6 +604,29 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             alert("不正解です。");
             return false;
+        }
+    }
+
+    // --- ★操作ログ送信関数 ---
+    function sendActionLog(actionType) {
+        if (!ACTION_LOG_URL) return;
+        const userName = sessionStorage.getItem('physics_app_username') || "ゲスト";
+        
+        // box1のみ
+        const allVectors = [...box1Vectors];
+        
+        const vectorData = allVectors.map(v => ({
+            start: { x: v.startPos.x, y: v.startPos.y },
+            end:   { x: v.startPos.x + v.vx, y: v.startPos.y + v.vy },
+            
+        }));
+
+        const data = { name: userName, appId: APP_ID, actionType: actionType, vectors: vectorData };
+
+        if (navigator.sendBeacon) {
+            navigator.sendBeacon(ACTION_LOG_URL, new Blob([JSON.stringify(data)], { type: 'text/plain' }));
+        } else {
+            fetch(ACTION_LOG_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(data) }).catch(e => console.error(e));
         }
     }
 
