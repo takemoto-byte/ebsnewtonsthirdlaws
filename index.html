@@ -3,12 +3,42 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Web シミュレーション (2物体・独立運動)</title>
+    <title>物理シミュレーション - スタート</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <canvas id="simulationCanvas" width="800" height="600"></canvas>
-    
-    <script src="app.js"></script>
+    <div id="title-container">
+        <h1>物理シミュレーション課題</h1>
+        <p>名前を入力してスタートしてください</p>
+        
+        <input type="text" id="username-input" placeholder="例: 物理 太郎" autocomplete="off">
+        <button id="start-btn" onclick="startGame()">はじめる</button>
+    </div>
+
+    <script>
+        function startGame() {
+            const nameInput = document.getElementById('username-input');
+            const name = nameInput.value.trim();
+
+            if (name === "") {
+                alert("名前を入力してください！");
+                return;
+            }
+
+            // 名前をブラウザに一時保存（sessionStorage）
+            // タブを閉じるまで有効です
+            sessionStorage.setItem('physics_app_username', name);
+
+            // メインの問題へ移動
+            window.location.href = "main.html";
+        }
+        
+        // Enterキーでもスタートできるようにする
+        document.getElementById('username-input').addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') {
+                startGame();
+            }
+        });
+    </script>
 </body>
 </html>

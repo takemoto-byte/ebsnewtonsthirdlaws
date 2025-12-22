@@ -15,3 +15,51 @@ canvas {
     /* ★これを追加！指での操作時にスクロールやズームを禁止します */
     touch-action: none; 
 }
+
+/* --- タイトル画面用のスタイル --- */
+#title-container {
+    text-align: center;
+    background-color: white;
+    padding: 40px;
+    border-radius: 10px;
+    box-shadow: 0 0 20px rgba(0,0,0,0.5);
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    width: 300px;
+}
+
+#title-container h1 {
+    font-size: 24px;
+    margin: 0;
+    color: #333;
+}
+
+#title-container p {
+    margin: 0;
+    color: #666;
+    font-size: 14px;
+}
+
+#username-input {
+    padding: 10px;
+    font-size: 16px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    outline: none;
+}
+
+#start-btn {
+    padding: 10px;
+    font-size: 18px;
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+#start-btn:hover {
+    background-color: #45a049;
+}
