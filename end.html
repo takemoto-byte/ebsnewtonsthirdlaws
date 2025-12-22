@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>物理シミュレーション - 終了</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="title-container">
+        <h1>課題クリア！</h1>
+        <p id="end-message">お疲れ様でした。</p>
+        
+    </div>
+
+    <script>
+        // 名前があれば、ねぎらいの言葉に名前を入れる
+        const userName = sessionStorage.getItem('physics_app_username');
+        if (userName) {
+            const messageEl = document.getElementById('end-message');
+            messageEl.innerHTML = `<strong>${userName}</strong> さん、<br>全問正解です。お疲れ様でした。`;
+        }
+
+
+    </script>
+</body>
+</html>
