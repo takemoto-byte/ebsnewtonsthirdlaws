@@ -13,26 +13,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
     fingerImage.onload = () => {
         isFingerImageLoaded = true;
-        // 画像がロードされたら、初回描画を強制する
-        drawSimulation(); 
+        drawSimulation(); // 画像読み込み完了後に再描画
     };
     fingerImage.onerror = () => {
         console.error("指の画像をロードできませんでした。'finger.png' が存在し、パスが正しいか確認してください。");
     };
 
-    // --- シミュレーション設定 ---
+    // --- 設定 ---
     const SCREEN_WIDTH = canvas.width;
     const SCREEN_HEIGHT = canvas.height;
-    
-    // --- 物理定数 ---
     const GRAVITY_ACCELERATION = 10;
-
-    // --- 床 ---
     const FLOOR_HEIGHT = 200;
     const FLOOR_COLOR = 'rgb(230, 230, 230)'; 
     const floorRect = { x: 0, y: SCREEN_HEIGHT - FLOOR_HEIGHT, width: SCREEN_WIDTH, height: FLOOR_HEIGHT };
-
-    // --- ベクトル ---
     const VECTOR_WIDTH = 2;
     const VECTOR_COLORS = ['#000000']; 
     const FORCE_SCALE_FACTOR = 0.1;
@@ -51,10 +44,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const INSTRUCTION_FONT = "16px 'Meiryo', sans-serif";
 
     // --- ★ログ設定（ここに入力してください） ---
-    // 操作ログ用 (再生・リセットの座標記録用)
     const ACTION_LOG_URL = "https://script.google.com/macros/s/AKfycbyEY0cnE-qSG1KH3UUXpaEmbu4OLATEz9Rd3rIcR2omKeKROYsHdYAVFMC_CBVVnDh1qg/exec"; 
-
-    // アプリID (応用=3)
     const APP_ID = 3;
 
     // --- 正解データ設定 ---
@@ -86,8 +76,6 @@ document.addEventListener('DOMContentLoaded', () => {
     let showMassText = false;
 
     // --- クラス定義 ---
-
-    /** 物理オブジェクトクラス */
     class PhysicsObject {
         constructor(x, y, w, h, m, c) {
             this.x = x; this.y = y; this.width = w; this.height = h;
@@ -95,94 +83,65 @@ document.addEventListener('DOMContentLoaded', () => {
             this.vx = 0; this.vy = 0; this.ax = 0; this.ay = 0;
             this.initialRect = { x: x, y: y, width: w, height: h };
         }
-
-        update() {
-            this.vx += this.ax;
-            this.vy += this.ay;
-            this.x += this.vx;
-            this.y += this.vy;
-        }
-
+        update() { this.vx += this.ax; this.vy += this.ay; this.x += this.vx; this.y += this.vy; }
         draw(ctx) {
-            ctx.fillStyle = this.color;
-            ctx.fillRect(this.x, this.y, this.width, this.height);
-            ctx.strokeStyle = 'black';
-            ctx.lineWidth = 1;
-            ctx.strokeRect(this.x, this.y, this.width, this.height);
+            ctx.fillStyle = this.color; ctx.fillRect(this.x, this.y, this.width, this.height);
+            ctx.strokeStyle = 'black'; ctx.lineWidth = 1; ctx.strokeRect(this.x, this.y, this.width, this.height);
         }
-
         collidesWith(p) {
             return p.x >= this.initialRect.x && p.x <= this.initialRect.x + this.initialRect.width &&
                    p.y >= this.initialRect.y && p.y <= this.initialRect.y + this.initialRect.height;
         }
     }
-
-    /** 力ベクトルクラス */
     class ForceVector {
-        constructor(startPos, vx, vy, color) {
-            this.startPos = startPos;
-            this.vx = vx;
-            this.vy = vy;
-            this.color = color;
-        }
+        constructor(startPos, vx, vy, color) { this.startPos = startPos; this.vx = vx; this.vy = vy; this.color = color; }
         draw(ctx, offsetX = 0, offsetY = 0) {
-            ctx.strokeStyle = this.color;
-            ctx.lineWidth = VECTOR_WIDTH;
-            drawVector(
-                ctx, 
-                this.startPos.x + offsetX, 
-                this.startPos.y + offsetY, 
-                this.startPos.x + this.vx + offsetX, 
-                this.startPos.y + this.vy + offsetY
-            );
+            ctx.strokeStyle = this.color; ctx.lineWidth = VECTOR_WIDTH;
+            drawVector(ctx, this.startPos.x + offsetX, this.startPos.y + offsetY, this.startPos.x + this.vx + offsetX, this.startPos.y + this.vy + offsetY);
         }
     }
-
-    /** 力テキストクラス */
     class ForceText {
-        constructor(text, pos) {
-            this.text = text;
-            this.pos = pos;
-        }
-        draw(ctx) {
-            ctx.fillStyle = 'black';
-            ctx.font = BUTTON_FONT;
-            ctx.fillText(this.text, this.pos.x, this.pos.y);
-        }
+        constructor(text, pos) { this.text = text; this.pos = pos; }
+        draw(ctx) { ctx.fillStyle = 'black'; ctx.font = BUTTON_FONT; ctx.fillText(this.text, this.pos.x, this.pos.y); }
     }
 
-    // --- メインロジック関数 ---
-
-    /** 物体の状態をリセット */
-    function createObjectStates() {
-        // ★リセットログ送信
-        if (box1Vectors && box1Vectors.length > 0) {
-            sendActionLog(0); // 0 = リセット
+    // --- メインロジック ---
+    
+    // ★修正: 引数 needLog を追加 (デフォルトは true)
+    function createObjectStates(needLog = true) {
+        // ログ送信 (エラー対策済み)
+        try {
+            if (needLog && box1Vectors && box1Vectors.length > 0) {
+                sendActionLog(0); 
+            }
+        } catch (e) {
+            console.error("Log error:", e);
         }
 
         if (validationTimer) clearTimeout(validationTimer);
-
         const box1Width = 120, box1Height = 120, box1Mass = 1.5;
         const box1InitialX = SCREEN_WIDTH / 2.0 - box1Width / 2.0;
         const box1InitialY = floorRect.y - box1Height;
         box1 = new PhysicsObject(box1InitialX, box1InitialY, box1Width, box1Height, box1Mass, 'rgb(100, 255, 100)');
         
         isRunning = false;
-        box1Vectors = [];
-        forceTextStamps = [];
+        box1Vectors = []; forceTextStamps = [];
         showMassText = false;
         calculatedMass1 = 0.0;
         targetObject = null; 
     }
 
-    /** 加速度の計算 */
     function startSimulation() {
         if (isRunning) return;
 
-        // ★再生ログ送信
-        sendActionLog(1); // 1 = 再生
+        // ★再生ログ送信 (エラー対策済み)
+        try {
+            sendActionLog(1); 
+        } catch (e) {
+            console.error("Log error:", e);
+        }
 
-        // --- Box 1 (緑) ---
+        // --- 物理計算 ---
         const netForceVX1 = box1Vectors.reduce((sum, v) => sum + v.vx, 0);
         let netForceVY1 = box1Vectors.reduce((sum, v) => sum + v.vy, 0);
         let downwardVectors1 = box1Vectors.filter(v => v.vy > 0).reduce((sum, v) => sum + v.vy, 0);
@@ -190,7 +149,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let netForceN_VX1 = netForceVX1 * FORCE_SCALE_FACTOR;
         let netForceN_VY1 = netForceVY1 * FORCE_SCALE_FACTOR;
-        let netDownwardVectors1 = downwardVectors1 * FORCE_SCALE_FACTOR;
+        
+        // ★重要: 変数定義 (app2でのミスを防ぐため明示的に定義)
         let netupwardVectors1 = upwardVectors1 * FORCE_SCALE_FACTOR;
 
         let netForceN_VY1_pygame = -netForceN_VY1;
@@ -198,14 +158,16 @@ document.addEventListener('DOMContentLoaded', () => {
         box1.ax = (netForceN_VX1 * FORCE_SCALE_FACTOR) / box1.mass;
         box1.ay = (netForceN_VY1 * FORCE_SCALE_FACTOR) / box1.mass;
 
-        if (Math.abs(netForceN_VX1) < 0.09 && Math.abs(netForceN_VY1) < 0.09) {
-            box1.ax = 0; box1.ay = 0;
-        }
+        if (Math.abs(netForceN_VX1) < 0.09 && Math.abs(netForceN_VY1) < 0.09) { box1.ax = 0; box1.ay = 0; }
 
-        // 質量計算（参考値）
-        if (netForceN_VY1_pygame < 0) calculatedMass1 = -1 * netupwardVectors1 / GRAVITY_ACCELERATION;
-        else if (netForceN_VY1_pygame >= 0 && netForceN_VY1_pygame < 0.09) calculatedMass1 = -1 * netupwardVectors1 / GRAVITY_ACCELERATION;
-        else calculatedMass1 = 0;
+        // 質量計算
+        if (netForceN_VY1_pygame < 0) {
+            calculatedMass1 = -1 * netupwardVectors1 / GRAVITY_ACCELERATION;
+        } else if (netForceN_VY1_pygame >= 0 && netForceN_VY1_pygame < 0.09) {
+            calculatedMass1 = -1 * netupwardVectors1 / GRAVITY_ACCELERATION;
+        } else {
+            calculatedMass1 = 0;
+        }
         
         showMassText = true;
         isRunning = true;
@@ -214,447 +176,208 @@ document.addEventListener('DOMContentLoaded', () => {
         
         validationTimer = setTimeout(() => {
             const isCorrect = checkAnswer(); 
-            if (isCorrect) {
-                // 正解時
-            } else {
+            if (!isCorrect) {
                 isRunning = false;
+                // ★修正: 不正解アラートの後に自動リセット (ログは送らない)
+                createObjectStates(false);
             }
-        }, 1000); // 1秒後に判定
+        }, 1000); 
     }
 
-    /** 状態更新 */
     function updateSimulation() {
         if (!isRunning) return;
         box1.update();
     }
    
-    /** 描画メイン */
     function drawSimulation() {
         ctx.clearRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
-        ctx.fillStyle = 'white';
-        ctx.fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
-        
-        // ユーザー名の表示
+        ctx.fillStyle = 'white'; ctx.fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
         const userName = sessionStorage.getItem('physics_app_username') || "ゲスト";
-        ctx.fillStyle = '#555';
-        ctx.font = "14px 'Meiryo', sans-serif";
-        ctx.textAlign = "right";
-        ctx.fillText(`学習者: ${userName}`, SCREEN_WIDTH - 20, 30);
-        ctx.textAlign = "left"; 
-
-        ctx.fillStyle = FLOOR_COLOR;
-        ctx.fillRect(floorRect.x, floorRect.y, floorRect.width, floorRect.height);
-
-        // 指示テキスト
-        ctx.fillStyle = 'black';
-        ctx.font = INSTRUCTION_FONT;
+        ctx.fillStyle = '#555'; ctx.font = "14px 'Meiryo', sans-serif"; ctx.textAlign = "right";
+        ctx.fillText(`学習者: ${userName}`, SCREEN_WIDTH - 20, 30); ctx.textAlign = "left"; 
+        ctx.fillStyle = FLOOR_COLOR; ctx.fillRect(floorRect.x, floorRect.y, floorRect.width, floorRect.height);
+        ctx.fillStyle = 'black'; ctx.font = INSTRUCTION_FONT;
         ctx.fillText("上から3.0Nの力で押されている、質量1.5kgの緑色の物体にはたらく力を作図して", 10, 25);
         ctx.fillText("再生ボタンを押してみましょう。100gの物体にはたらく力の大きさを１Nとする。", 10, 45);
         ctx.fillText("また、灰色の床ははかりになっている。", 10, 65);
 
-        // 物体の描画
         box1.draw(ctx);
 
-        // 指の画像を緑の物体の上に描画
         if (isFingerImageLoaded) {
-            const fingerWidth = 80; 
-            const fingerHeight = 100;
+            const fingerWidth = 80; const fingerHeight = 100;
             const fingerX = box1.x + (box1.width / 2) - (fingerWidth / 2) - 21; 
             const fingerY = box1.y - fingerHeight + 3; 
-
             ctx.drawImage(fingerImage, fingerX, fingerY, fingerWidth, fingerHeight);
         }
 
-        // ベクトルの描画（重なり対応）
         const startPosCounts = {}; 
-
         const drawWithOffset = (vectorList) => {
             vectorList.forEach(v => {
                 const key = `${v.startPos.x},${v.startPos.y}`;
                 const count = startPosCounts[key] || 0;
-                
                 let offset = 0;
                 if (count > 0) {
-                    const gap = 12; 
-                    const sign = (count % 2 === 1) ? 1 : -1;
+                    const gap = 12; const sign = (count % 2 === 1) ? 1 : -1;
                     const multiplier = Math.ceil(count / 2.0);
                     offset = multiplier * gap * sign;
                 }
-
-                v.draw(ctx, offset, 0);
-                startPosCounts[key] = count + 1;
+                v.draw(ctx, offset, 0); startPosCounts[key] = count + 1;
             });
         };
-
         drawWithOffset(box1Vectors);
-     
-       // 描画中のベクトル
+        
         if (isDrawingVector && vectorStartPos) {
             const snappedComponents = snapVectorComponents(vectorStartPos, currentMousePos);
-            const snappedVX = snappedComponents.vx;
-            const snappedVY = snappedComponents.vy;
-            const snappedEndPosX = vectorStartPos.x + snappedVX;
-            const snappedEndPosY = vectorStartPos.y + snappedVY;
-
-            const color = VECTOR_COLORS[0];
-            ctx.strokeStyle = color;
-            ctx.lineWidth = VECTOR_WIDTH;
-            
+            const snappedEndPosX = vectorStartPos.x + snappedComponents.vx;
+            const snappedEndPosY = vectorStartPos.y + snappedComponents.vy;
+            ctx.strokeStyle = VECTOR_COLORS[0]; ctx.lineWidth = VECTOR_WIDTH;
             drawVector(ctx, vectorStartPos.x, vectorStartPos.y, snappedEndPosX, snappedEndPosY);
-
-            const snappedMagnitude = Math.sqrt(snappedVX * snappedVX + snappedVY * snappedVY);
-            const mag = snappedMagnitude * FORCE_SCALE_FACTOR;
-            const magText = `${mag.toFixed(1)} N`;
-
-            ctx.fillStyle = 'black';
-            ctx.font = BUTTON_FONT;
-            ctx.fillText(magText, snappedEndPosX + 50, snappedEndPosY -20);
+            const mag = Math.sqrt(snappedComponents.vx**2 + snappedComponents.vy**2) * FORCE_SCALE_FACTOR;
+            ctx.fillStyle = 'black'; ctx.font = BUTTON_FONT;
+            ctx.fillText(`${mag.toFixed(1)} N`, snappedEndPosX + 50, snappedEndPosY -20);
         }
-
-        // 保存された力のテキスト
         forceTextStamps.forEach(t => t.draw(ctx));
-
-        // 質量計算結果
         if (showMassText) {
-            ctx.font = BUTTON_FONT;
-            ctx.fillStyle = 'black';
+            ctx.font = BUTTON_FONT; ctx.fillStyle = 'black';
             ctx.fillText(`灰色の床がはかる重さ: ${calculatedMass1.toFixed(2)} kg`, 10, 390);
         }
-
-        // ボタンの描画
         drawButton(ctx, startButtonRect, START_BUTTON_COLOR_IDLE, "再生");
         drawButton(ctx, resetButtonRect, RESET_BUTTON_COLOR_IDLE, "リセット");
     }
 
     // --- ヘルパー関数群 ---
-    
     function getSnapPoints(box) {
-        const rect = box.initialRect;
-        const centerX = rect.x + rect.width / 2;
-        const centerY = rect.y + rect.height / 2;
-
-        return [
-            { x: centerX, y: centerY },    // 1. 中心
-            { x: centerX-12, y: rect.y+5 },     // 2. 上辺中点
-            { x: centerX+12, y: rect.y + rect.height-5 }, // 3. 下辺中点
-            { x: rect.x+5, y: centerY },     // 4. 左辺中点
-            { x: rect.x + rect.width-5, y: centerY } // 5. 右辺中点
-        ];
+        const rect = box.initialRect; const cx = rect.x + rect.width / 2; const cy = rect.y + rect.height / 2;
+        return [{ x: cx, y: cy }, { x: cx-12, y: rect.y+5 }, { x: cx+12, y: rect.y + rect.height-5 }, { x: rect.x+5, y: cy }, { x: rect.x + rect.width-5, y: cy }];
     }
-
     function getNearestSnapPoint(p, box) {
-        const snapPoints = getSnapPoints(box);
-        let minDistance = Infinity;
-        let nearestPoint = null;
-
+        const snapPoints = getSnapPoints(box); let minDistance = Infinity; let nearestPoint = null;
         for (const sp of snapPoints) {
             const dist = getDistance(p, sp);
-            if (dist < minDistance) {
-                minDistance = dist;
-                nearestPoint = sp;
-            }
-        }
-        return nearestPoint;
+            if (dist < minDistance) { minDistance = dist; nearestPoint = sp; }
+        } return nearestPoint;
     }
-     
     function drawVector(ctx, x1, y1, x2, y2) {
         if (x1 === x2 && y1 === y2) return;
-        
-        ctx.beginPath();
-        ctx.arc(x1, y1, 4, 0, Math.PI * 2); 
-        ctx.fillStyle = ctx.strokeStyle;
-        ctx.fill();
-
-        const angle = Math.atan2(y2 - y1, x2 - x1);
-        const arrowheadLength = 10;
-        
-        ctx.beginPath();
-        ctx.moveTo(x1, y1);
-        ctx.lineTo(x2, y2);
-        ctx.stroke();
-        
-        ctx.beginPath();
+        ctx.beginPath(); ctx.arc(x1, y1, 4, 0, Math.PI * 2); ctx.fillStyle = ctx.strokeStyle; ctx.fill();
+        const angle = Math.atan2(y2 - y1, x2 - x1); const arrowheadLength = 10;
+        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(x2, y2);
+        ctx.lineTo(x2 - arrowheadLength * Math.cos(angle - Math.PI / 6), y2 - arrowheadLength * Math.sin(angle - Math.PI / 6));
         ctx.moveTo(x2, y2);
-        ctx.lineTo(
-            x2 - arrowheadLength * Math.cos(angle - Math.PI / 6),
-            y2 - arrowheadLength * Math.sin(angle - Math.PI / 6)
-        );
-        ctx.moveTo(x2, y2);
-        ctx.lineTo(
-            x2 - arrowheadLength * Math.cos(angle + Math.PI / 6),
-            y2 - arrowheadLength * Math.sin(angle + Math.PI / 6)
-        );
+        ctx.lineTo(x2 - arrowheadLength * Math.cos(angle + Math.PI / 6), y2 - arrowheadLength * Math.sin(angle + Math.PI / 6));
         ctx.stroke();
     }
-
     function drawButton(ctx, rect, color, text) {
-        ctx.fillStyle = color;
-        ctx.beginPath();
-        ctx.roundRect(rect.x, rect.y, rect.width, rect.height, [5]);
-        ctx.fill();
-        
-        ctx.fillStyle = 'black';
-        ctx.font = BUTTON_FONT;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
+        ctx.fillStyle = color; ctx.beginPath(); ctx.roundRect(rect.x, rect.y, rect.width, rect.height, [5]); ctx.fill();
+        ctx.fillStyle = 'black'; ctx.font = BUTTON_FONT; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         ctx.fillText(text, rect.x + rect.width / 2, rect.y + rect.height / 2);
     }
-    
     function snapVectorComponents(start, end) {
-        const vx = end.x - start.x;
-        const vy = end.y - start.y;
+        const vx = end.x - start.x; const vy = end.y - start.y;
         if (vx === 0 && vy === 0) return { vx: 0, vy: 0 };
-
-        const angleRad = Math.atan2(vy, vx);
-        const magnitude = Math.sqrt(vx * vx + vy * vy);
-        
-        const currentN = magnitude * FORCE_SCALE_FACTOR;
-        const snapValueN = 0.5;
-        const snappedN = Math.round(currentN / snapValueN) * snapValueN;
-        
-        const snappedMagnitude = snappedN / FORCE_SCALE_FACTOR;
-        const snapAngle = Math.PI / 6.0; 
-        const snappedAngleRad = Math.round(angleRad / snapAngle) * snapAngle;
-        
-        const snappedVX = snappedMagnitude * Math.cos(snappedAngleRad);
-        const snappedVY = snappedMagnitude * Math.sin(snappedAngleRad);
-
-        return {
-            vx: snappedVX,
-            vy: snappedVY
-        };
+        const angleRad = Math.atan2(vy, vx); const magnitude = Math.sqrt(vx * vx + vy * vy);
+        const snappedMagnitude = (Math.round((magnitude * FORCE_SCALE_FACTOR) / 0.5) * 0.5) / FORCE_SCALE_FACTOR;
+        const snapAngle = Math.PI / 6.0; const snappedAngleRad = Math.round(angleRad / snapAngle) * snapAngle;
+        return { vx: snappedMagnitude * Math.cos(snappedAngleRad), vy: snappedMagnitude * Math.sin(snappedAngleRad) };
     }
-   
-    function getDistance(p1, p2) {
-        return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
-    }
-    
-    function isPointInRect(p, rect) {
-        return p.x >= rect.x && p.x <= rect.x + rect.width &&
-               p.y >= rect.y && p.y <= rect.y + rect.height;
-    }
-    
+    function getDistance(p1, p2) { return Math.sqrt((p1.x - p2.x)**2 + (p1.y - p2.y)**2); }
+    function isPointInRect(p, rect) { return p.x >= rect.x && p.x <= rect.x + rect.width && p.y >= rect.y && p.y <= rect.y + rect.height; }
     function getPos(e) {
-        const rect = canvas.getBoundingClientRect();
-        let clientX, clientY;
-
-        if (e.touches && e.touches.length > 0) {
-            clientX = e.touches[0].clientX;
-            clientY = e.touches[0].clientY;
-        } else if (e.changedTouches && e.changedTouches.length > 0) {
-            clientX = e.changedTouches[0].clientX;
-            clientY = e.changedTouches[0].clientY;
-        } else {
-            clientX = e.clientX;
-            clientY = e.clientY;
-        }
-
-        return {
-            x: clientX - rect.left,
-            y: clientY - rect.top
-        };
+        const rect = canvas.getBoundingClientRect(); let clientX, clientY;
+        if (e.touches && e.touches.length > 0) { clientX = e.touches[0].clientX; clientY = e.touches[0].clientY; } 
+        else if (e.changedTouches && e.changedTouches.length > 0) { clientX = e.changedTouches[0].clientX; clientY = e.changedTouches[0].clientY; } 
+        else { clientX = e.clientX; clientY = e.clientY; }
+        return { x: clientX - rect.left, y: clientY - rect.top };
     }
-
-    // --- イベントリスナーの登録 ---
-
-    function handleStart(e) {
-        e.preventDefault(); 
-        const p = getPos(e); 
-        currentMousePos = p;
-        targetObject = null;
-        isDrawingVector = false;
-
-        if (isPointInRect(p, startButtonRect)) {
-            startSimulation();
-        } else if (isPointInRect(p, resetButtonRect)) {
-            createObjectStates();
-        } 
-        else if (box1.collidesWith(p)) {
-            isDrawingVector = true;
-            targetObject = box1;
-            vectorStartPos = getNearestSnapPoint(p, box1);
-        } 
-    }
-
-    function handleEnd(e) {
-        e.preventDefault();
-        if (!isDrawingVector || !targetObject) {
-            isDrawingVector = false;
-            targetObject = null;
-            return;
-        }
-
-        isDrawingVector = false;
-        const endPos = getPos(e); 
-        
-        const snappedComponents = snapVectorComponents(vectorStartPos, endPos);
-        const vx = snappedComponents.vx;
-        const vy = snappedComponents.vy;
-        
-        if (Math.abs(vx) < 0.1 && Math.abs(vy) < 0.1) {
-            targetObject = null;
-            return;
-        }
-        
-        const color = VECTOR_COLORS[0];
-
-        const snappedMagnitude = Math.sqrt(vx * vx + vy * vy);
-        const mag = snappedMagnitude * FORCE_SCALE_FACTOR;
-        const magText = `${mag.toFixed(1)} N`;
-        const snappedEndPosX = vectorStartPos.x + vx;
-        const snappedEndPosY = vectorStartPos.y + vy;
-        forceTextStamps.push(new ForceText(magText, { x: snappedEndPosX + 15, y: snappedEndPosY + 15 }));
-        
-        if (targetObject === box1) {
-            box1Vectors.push(new ForceVector(vectorStartPos, vx, vy, color));
-        }
-        
-        targetObject = null;
-    }
-
-    function handleMove(e) {
-        e.preventDefault();
-        currentMousePos = getPos(e); 
-        
-        const p = currentMousePos;
-        if (isPointInRect(p, startButtonRect) || isPointInRect(p, resetButtonRect)) {
-            canvas.style.cursor = 'pointer';
-        } else {
-            canvas.style.cursor = 'crosshair';
-        }
-    }
-
-    // イベントの登録
-    canvas.addEventListener('mousedown', handleStart, { passive: false });
-    canvas.addEventListener('touchstart', handleStart, { passive: false });
-
-    canvas.addEventListener('mouseup', handleEnd, { passive: false });
-    canvas.addEventListener('touchend', handleEnd, { passive: false });
-
-    canvas.addEventListener('mousemove', handleMove, { passive: false });
-    canvas.addEventListener('touchmove', handleMove, { passive: false });
-
     function getTargetPos(box, typeString) {
-        const r = box.initialRect;
-        const cx = r.x + r.width / 2;
-        const cy = r.y + r.height / 2;
-
-        let type = typeString;
-        let offsetX = 0;
-        let offsetY = 0;
-
+        const r = box.initialRect; const cx = r.x + r.width / 2; const cy = r.y + r.height / 2;
+        let type = typeString; let offsetX = 0; let offsetY = 0;
         const match = typeString.match(/^([a-z]+)(.*)$/);
         if (match) {
-            type = match[1]; 
-            const offsetPart = match[2]; 
-
+            type = match[1]; const offsetPart = match[2];
             if (offsetPart) {
-                if (offsetPart.includes(',')) {
-                    const parts = offsetPart.split(',');
-                    offsetX = parseInt(parts[0], 10) || 0;
-                    offsetY = parseInt(parts[1], 10) || 0;
-                } else {
-                    offsetY = parseInt(offsetPart, 10) || 0;
-                }
+                if (offsetPart.includes(',')) { const parts = offsetPart.split(','); offsetX = parseInt(parts[0], 10) || 0; offsetY = parseInt(parts[1], 10) || 0; } 
+                else { offsetY = parseInt(offsetPart, 10) || 0; }
             }
         }
-
         let basePos = { x: cx, y: cy };
         switch (type) {
-            case 'center': basePos = { x: cx, y: cy }; break;
-            case 'top':    basePos = { x: cx, y: r.y }; break;
-            case 'bottom': basePos = { x: cx, y: r.y + r.height }; break;
-            case 'left':   basePos = { x: r.x, y: cy }; break;
-            case 'right':  basePos = { x: r.x + r.width, y: cy }; break;
-            default:       basePos = { x: cx, y: cy }; break;
-        }
-
-        return {
-            x: basePos.x + offsetX,
-            y: basePos.y + offsetY
-        };
+            case 'center': basePos = { x: cx, y: cy }; break; case 'top': basePos = { x: cx, y: r.y }; break;
+            case 'bottom': basePos = { x: cx, y: r.y + r.height }; break; case 'left': basePos = { x: r.x, y: cy }; break;
+            case 'right': basePos = { x: r.x + r.width, y: cy }; break; default: basePos = { x: cx, y: cy }; break;
+        } return { x: basePos.x + offsetX, y: basePos.y + offsetY };
     }
+
+    // --- イベントリスナー ---
+    function handleStart(e) {
+        e.preventDefault(); const p = getPos(e); currentMousePos = p; targetObject = null; isDrawingVector = false;
+        if (isPointInRect(p, startButtonRect)) { startSimulation(); } 
+        else if (isPointInRect(p, resetButtonRect)) { createObjectStates(); } 
+        else if (box1.collidesWith(p)) { isDrawingVector = true; targetObject = box1; vectorStartPos = getNearestSnapPoint(p, box1); } 
+    }
+    function handleEnd(e) {
+        e.preventDefault();
+        if (!isDrawingVector || !targetObject) { isDrawingVector = false; targetObject = null; return; }
+        isDrawingVector = false; const endPos = getPos(e);
+        const snappedComponents = snapVectorComponents(vectorStartPos, endPos);
+        if (Math.abs(snappedComponents.vx) < 0.1 && Math.abs(snappedComponents.vy) < 0.1) { targetObject = null; return; }
+        const color = VECTOR_COLORS[0];
+        const snappedMagnitude = Math.sqrt(snappedComponents.vx**2 + snappedComponents.vy**2);
+        const magText = `${(snappedMagnitude * FORCE_SCALE_FACTOR).toFixed(1)} N`;
+        const snappedEndPosX = vectorStartPos.x + snappedComponents.vx;
+        const snappedEndPosY = vectorStartPos.y + snappedComponents.vy;
+        forceTextStamps.push(new ForceText(magText, { x: snappedEndPosX + 15, y: snappedEndPosY + 15 }));
+        if (targetObject === box1) { box1Vectors.push(new ForceVector(vectorStartPos, snappedComponents.vx, snappedComponents.vy, color)); } 
+        targetObject = null;
+    }
+    function handleMove(e) {
+        e.preventDefault(); currentMousePos = getPos(e); const p = currentMousePos;
+        if (isPointInRect(p, startButtonRect) || isPointInRect(p, resetButtonRect)) { canvas.style.cursor = 'pointer'; } 
+        else { canvas.style.cursor = 'crosshair'; }
+    }
+    canvas.addEventListener('mousedown', handleStart, { passive: false }); canvas.addEventListener('touchstart', handleStart, { passive: false });
+    canvas.addEventListener('mouseup', handleEnd, { passive: false }); canvas.addEventListener('touchend', handleEnd, { passive: false });
+    canvas.addEventListener('mousemove', handleMove, { passive: false }); canvas.addEventListener('touchmove', handleMove, { passive: false });
 
     function checkAnswer() {
         let allCorrect = true;
-        let message = "";
-
         CORRECT_ANSWERS.forEach(answerSet => {
-            let userVectors = [];
-            let targetBox = null;
-            let targetBoxName = "";
-
-            if (answerSet.objectId === 'box1') {
-                userVectors = box1Vectors;
-                targetBox = box1;
-                targetBoxName = "緑の物体";
-            } 
-
-            if (userVectors.length !== answerSet.vectors.length) {
-                message += `${targetBoxName}: 力の数が違います。(正解: ${answerSet.vectors.length}本, あなた: ${userVectors.length}本)\n`;
-                allCorrect = false;
-                return; 
-            }
-
-           let remainingUserVectors = [...userVectors];
-
+            let userVectors = []; let targetBox = null;
+            if (answerSet.objectId === 'box1') { userVectors = box1Vectors; targetBox = box1; } 
+            if (userVectors.length !== answerSet.vectors.length) { allCorrect = false; return; }
+            let remainingUserVectors = [...userVectors];
             answerSet.vectors.forEach(correctVec => {
                 const correctStartPos = getTargetPos(targetBox, correctVec.startPosType);
-
                 const foundIndex = remainingUserVectors.findIndex(uVec => {
-                    const uFx_N = uVec.vx * FORCE_SCALE_FACTOR;
-                    const uFy_N = uVec.vy * FORCE_SCALE_FACTOR;
-                    const forceTolerance = 0.2; 
-
-                    const matchForceX = Math.abs(uFx_N - correctVec.fx) < forceTolerance;
-                    const matchForceY = Math.abs(uFy_N - correctVec.fy) < forceTolerance;
-
-                    const posTolerance = 5.0; 
-                    const matchPosX = Math.abs(uVec.startPos.x - correctStartPos.x) < posTolerance;
-                    const matchPosY = Math.abs(uVec.startPos.y - correctStartPos.y) < posTolerance;
-
-                    return matchForceX && matchForceY && matchPosX && matchPosY;
+                    const uFx_N = uVec.vx * FORCE_SCALE_FACTOR; const uFy_N = uVec.vy * FORCE_SCALE_FACTOR;
+                    return Math.abs(uFx_N - correctVec.fx) < 0.2 && Math.abs(uFy_N - correctVec.fy) < 0.2 && Math.abs(uVec.startPos.x - correctStartPos.x) < 5.0 && Math.abs(uVec.startPos.y - correctStartPos.y) < 5.0;
                 });
-
-                if (foundIndex !== -1) {
-                    remainingUserVectors.splice(foundIndex, 1);
-                } else {
-                    allCorrect = false;
-                }
+                if (foundIndex !== -1) { remainingUserVectors.splice(foundIndex, 1); } else { allCorrect = false; }
             });
         });
-
-        if (allCorrect) {
-            alert("正解です！");
-            window.location.href = "main.html";
-            return true;
-        } else {
-            alert("不正解です。");
-            return false;
-        }
+        if (allCorrect) { alert("正解です！"); window.location.href = "main.html"; return true; } 
+        else { alert("不正解です。"); return false; }
     }
 
-    // --- ★操作ログ送信関数 ---
+    // --- ★ログ送信関数 (エラー対策済み) ---
     function sendActionLog(actionType) {
-        if (!ACTION_LOG_URL) return;
-        const userName = sessionStorage.getItem('physics_app_username') || "ゲスト";
-        
-        // box1のみ
-        const allVectors = [...box1Vectors];
-        
-        const vectorData = allVectors.map(v => ({
-            start: { x: v.startPos.x, y: v.startPos.y },
-            end:   { x: v.startPos.x + v.vx, y: v.startPos.y + v.vy },
+        try {
+            const consent = sessionStorage.getItem('physics_app_consent');
+            if (consent !== 'true') return;
+
+            if (!ACTION_LOG_URL) return;
+            const userName = sessionStorage.getItem('physics_app_username') || "ゲスト";
             
-        }));
-
-        const data = { name: userName, appId: APP_ID, actionType: actionType, vectors: vectorData };
-
-        if (navigator.sendBeacon) {
-            navigator.sendBeacon(ACTION_LOG_URL, new Blob([JSON.stringify(data)], { type: 'text/plain' }));
-        } else {
-            fetch(ACTION_LOG_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(data) }).catch(e => console.error(e));
-        }
+            const allVectors = [...box1Vectors];
+            const vectorData = allVectors.map(v => ({
+                start: { x: v.startPos.x, y: v.startPos.y },
+                end:   { x: v.startPos.x + v.vx, y: v.startPos.y + v.vy }
+            }));
+            const data = { name: userName, appId: APP_ID, actionType: actionType, vectors: vectorData };
+            if (navigator.sendBeacon) { navigator.sendBeacon(ACTION_LOG_URL, new Blob([JSON.stringify(data)], { type: 'text/plain' })); } 
+            else { fetch(ACTION_LOG_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(data) }).catch(e => console.error(e)); }
+        } catch(e) { console.error("Send log error:", e); }
     }
 
     // --- アニメーションループ ---
@@ -664,8 +387,6 @@ document.addEventListener('DOMContentLoaded', () => {
         requestAnimationFrame(gameLoop);
     }
 
-    // --- 初期化と実行 ---
-    createObjectStates();
-    gameLoop();
-
+    createObjectStates(); 
+    gameLoop();           
 });

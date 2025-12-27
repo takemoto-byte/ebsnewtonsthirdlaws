@@ -12,6 +12,14 @@
         <p>名前を入力してスタートしてください</p>
         
         <input type="text" id="username-input" placeholder="例: 物理 太郎" autocomplete="off">
+        
+        <div style="margin: 15px 0; text-align: left; font-size: 14px; background: #f9f9f9; padding: 10px; border-radius: 5px;">
+            <label style="cursor: pointer; display: flex; align-items: center;">
+                <input type="checkbox" id="consent-check" style="width: 20px; height: 20px; margin-right: 10px;"checked>
+                <span>調査協力のため、学習ログ（操作・正誤データ）の送信を許可する</span>
+            </label>
+        </div>
+
         <button id="start-btn" onclick="startGame()">はじめる</button>
     </div>
 
@@ -19,21 +27,25 @@
         function startGame() {
             const nameInput = document.getElementById('username-input');
             const name = nameInput.value.trim();
+            // ★追加: チェックボックスの状態を取得
+            const isConsented = document.getElementById('consent-check').checked;
 
             if (name === "") {
                 alert("名前を入力してください！");
                 return;
             }
 
-            // 名前をブラウザに一時保存（sessionStorage）
-            // タブを閉じるまで有効です
+            // 名前を保存
             sessionStorage.setItem('physics_app_username', name);
+            
+            // ★追加: 同意状態を保存 ('true' または 'false' という文字で保存されます)
+            sessionStorage.setItem('physics_app_consent', isConsented);
 
             // メインの問題へ移動
             window.location.href = "main.html";
         }
         
-        // Enterキーでもスタートできるようにする
+        // Enterキー対応
         document.getElementById('username-input').addEventListener('keypress', function (e) {
             if (e.key === 'Enter') {
                 startGame();

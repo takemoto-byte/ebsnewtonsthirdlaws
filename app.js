@@ -28,13 +28,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const INSTRUCTION_FONT = "16px 'Meiryo', sans-serif";
 
     // --- ★ログ設定（ここに入力してください） ---
-    // 1. 成績ログ用 (正解・不正解の記録) - 不要なら空欄でOK
     const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbymGS9vU-xHbfOrd8tHfyISyLSl3g1EI47OvQjqRDg94iX9ITwhAKvSOoujCQahLYuVEg/exec"; 
-
-    // 2. 操作ログ用 (再生・リセット時の座標記録) - ★ここに新しいURLを入れる
     const ACTION_LOG_URL = "https://script.google.com/macros/s/AKfycbyEY0cnE-qSG1KH3UUXpaEmbu4OLATEz9Rd3rIcR2omKeKROYsHdYAVFMC_CBVVnDh1qg/exec"; 
-    
-    // アプリID (メイン=1)
     const APP_ID = 1;
 
     // --- 正解データ設定 ---
@@ -115,10 +110,17 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- メインロジック ---
-    function createObjectStates() {
-        // ★リセットログ送信 (矢印が1本でもある場合のみ「0」を送る)
-        if ((box1Vectors && box1Vectors.length > 0) || (box2Vectors && box2Vectors.length > 0)) {
-            sendActionLog(0); // 0 = リセット
+    
+    // ★修正: 引数 needLog を追加 (デフォルトは true = ログを送る)
+    function createObjectStates(needLog = true) {
+        // ★リセットログ送信
+        try {
+            // needLog が true の場合のみ送信する
+            if (needLog && ((box1Vectors && box1Vectors.length > 0) || (box2Vectors && box2Vectors.length > 0))) {
+                sendActionLog(0); 
+            }
+        } catch (e) {
+            console.error("Log error:", e);
         }
 
         if (validationTimer) clearTimeout(validationTimer);
@@ -141,8 +143,12 @@ document.addEventListener('DOMContentLoaded', () => {
     function startSimulation() {
         if (isRunning) return;
 
-        // ★再生ログ送信 (再生時は「1」を送る)
-        sendActionLog(1); 
+        // ★再生ログ送信（エラー対策済み）
+        try {
+            sendActionLog(1); 
+        } catch (e) {
+            console.error("Log error:", e);
+        }
 
         // --- 物理計算 ---
         const netForceVX1 = box1Vectors.reduce((sum, v) => sum + v.vx, 0);
@@ -184,7 +190,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const checkResult = checkAnswerDetails(); 
             if (checkResult.isCorrect) {
                 // 正解ログ送信
-                sendToGoogleSheet(true);
+                try { sendToGoogleSheet(true); } catch(e) { console.error(e); }
                 setTimeout(() => { window.location.href = "end.html"; }, 500);
             } else {
                 handleIncorrect(checkResult.missingIds);
@@ -233,6 +239,9 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             const remaining = MAX_ATTEMPTS - attemptCount;
             alert(`不正解です。\nあと${remaining}回間違えると、補助問題へ移動します。`);
+            
+            // ★修正: ここでは false (ログなし) を指定してリセット
+            createObjectStates(false);
         }
     }
 
@@ -254,8 +263,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const primaryCauseId = errorIds[0];
         const destination = DESTINATION_MAP[primaryCauseId] || "index2.html"; 
         
-        // 成績ログ送信(失敗)
-        sendToGoogleSheet(false);
+        try { sendToGoogleSheet(false); } catch(e) { console.error(e); }
 
         alert(`5回不正解となりました。\n適した補助問題へ移動します。`);
         window.location.href = destination;
@@ -414,37 +422,50 @@ document.addEventListener('DOMContentLoaded', () => {
     canvas.addEventListener('mouseup', handleEnd, { passive: false }); canvas.addEventListener('touchend', handleEnd, { passive: false });
     canvas.addEventListener('mousemove', handleMove, { passive: false }); canvas.addEventListener('touchmove', handleMove, { passive: false });
 
-    // --- 成績ログ送信関数 ---
+    // --- ログ送信関数 (同意チェック付き + 安全化) ---
     function sendToGoogleSheet(isSuccess) {
-        if (!GOOGLE_SCRIPT_URL) return;
-        const userName = sessionStorage.getItem('physics_app_username') || "ゲスト";
-        const data = { name: userName, errors: totalSessionErrors, isCompleted: isSuccess };
-        if (navigator.sendBeacon) { navigator.sendBeacon(GOOGLE_SCRIPT_URL, new Blob([JSON.stringify(data)], { type: 'text/plain' })); } 
-        else { fetch(GOOGLE_SCRIPT_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(data) }).catch(e => console.error(e)); }
-    }
+        try {
+            const consent = sessionStorage.getItem('physics_app_consent');
+            if (consent !== 'true') return; 
 
-    // --- ★操作ログ送信関数 ---
-    function sendActionLog(actionType) {
-        if (!ACTION_LOG_URL) return;
-        const userName = sessionStorage.getItem('physics_app_username') || "ゲスト";
-        // 2物体分まとめる
-        const allVectors = [...box1Vectors, ...box2Vectors];
-        const vectorData = allVectors.map(v => ({
-            start: { x: v.startPos.x, y: v.startPos.y },
-            end:   { x: v.startPos.x + v.vx, y: v.startPos.y + v.vy },
+            if (!GOOGLE_SCRIPT_URL) return;
+            const userName = sessionStorage.getItem('physics_app_username') || "ゲスト";
+            const data = { name: userName, errors: totalSessionErrors, isCompleted: isSuccess };
             
-        }));
-        const data = { name: userName, appId: APP_ID, actionType: actionType, vectors: vectorData };
-        if (navigator.sendBeacon) { navigator.sendBeacon(ACTION_LOG_URL, new Blob([JSON.stringify(data)], { type: 'text/plain' })); } 
-        else { fetch(ACTION_LOG_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(data) }).catch(e => console.error(e)); }
+            if (navigator.sendBeacon) {
+                navigator.sendBeacon(GOOGLE_SCRIPT_URL, new Blob([JSON.stringify(data)], { type: 'text/plain' }));
+            } else {
+                fetch(GOOGLE_SCRIPT_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(data) }).catch(e => console.error(e));
+            }
+        } catch (e) { console.error("Send result error:", e); }
     }
 
-    // --- 初期化とループ開始 ---
-    createObjectStates(); 
+    function sendActionLog(actionType) {
+        try {
+            const consent = sessionStorage.getItem('physics_app_consent');
+            if (consent !== 'true') return;
+
+            if (!ACTION_LOG_URL) return;
+            const userName = sessionStorage.getItem('physics_app_username') || "ゲスト";
+            
+            const allVectors = [...box1Vectors, ...box2Vectors];
+            const vectorData = allVectors.map(v => ({
+                start: { x: v.startPos.x, y: v.startPos.y },
+                end:   { x: v.startPos.x + v.vx, y: v.startPos.y + v.vy }
+            }));
+            const data = { name: userName, appId: APP_ID, actionType: actionType, vectors: vectorData };
+            if (navigator.sendBeacon) { navigator.sendBeacon(ACTION_LOG_URL, new Blob([JSON.stringify(data)], { type: 'text/plain' })); } 
+            else { fetch(ACTION_LOG_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(data) }).catch(e => console.error(e)); }
+        } catch (e) { console.error("Send log error:", e); }
+    }
+
+    // --- アニメーションループ ---
     function gameLoop() {
         updateSimulation(); 
         drawSimulation();   
         requestAnimationFrame(gameLoop);
     }
+
+    createObjectStates(); 
     gameLoop();           
 });
