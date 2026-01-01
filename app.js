@@ -16,15 +16,25 @@ document.addEventListener('DOMContentLoaded', () => {
     const VECTOR_COLORS = ['#000000']; 
     const FORCE_SCALE_FACTOR = 0.1;
 
-    // --- ボタン設定 ---
-    const buttonWidth = 100, buttonHeight = 40, buttonPadding = 140;
-    const startButtonX = (SCREEN_WIDTH - (buttonWidth * 2 + buttonPadding)) / 2;
-    const startButtonY = SCREEN_HEIGHT - buttonHeight - 10;
-    const startButtonRect = { x: startButtonX, y: startButtonY, width: buttonWidth, height: buttonHeight };
-    const resetButtonRect = { x: startButtonX + buttonWidth + buttonPadding, y: startButtonY, width: buttonWidth, height: buttonHeight };
+    // --- ボタン設定 (3つ並べるための配置計算) ---
+    const buttonWidth = 100, buttonHeight = 40;
+    const buttonGap = 50; // ボタン間の隙間
+    
+    // 3つのボタン全体の幅
+    const totalButtonWidth = (buttonWidth * 3) + (buttonGap * 2);
+    // 左端の開始位置
+    const startButtonBaseX = (SCREEN_WIDTH - totalButtonWidth) / 2;
+    const buttonY = SCREEN_HEIGHT - buttonHeight - 20;
+
+    // 各ボタンの矩形定義
+    const startButtonRect = { x: startButtonBaseX, y: buttonY, width: buttonWidth, height: buttonHeight };
+    const undoButtonRect  = { x: startButtonBaseX + buttonWidth + buttonGap, y: buttonY, width: buttonWidth, height: buttonHeight };
+    const resetButtonRect = { x: startButtonBaseX + (buttonWidth + buttonGap) * 2, y: buttonY, width: buttonWidth, height: buttonHeight };
+
     const START_BUTTON_COLOR_IDLE = '#90EE90'; 
+    const UNDO_BUTTON_COLOR_IDLE  = '#FFD700'; // 黄色
     const RESET_BUTTON_COLOR_IDLE = '#ADD8E6'; 
-    const BUTTON_FONT = "bold 20px 'Meiryo', sans-serif";
+    const BUTTON_FONT = "bold 18px 'Meiryo', sans-serif";
     const INSTRUCTION_FONT = "16px 'Meiryo', sans-serif";
 
     // --- ★ログ設定（ここに入力してください） ---
@@ -52,7 +62,7 @@ document.addEventListener('DOMContentLoaded', () => {
     ];
 
     // --- ミス判定ロジック設定 ---
-    const MAX_ATTEMPTS = 5; 
+    const MAX_ATTEMPTS = 3; 
     const PRIORITY_LIST = ["box1_gravity", "box2_gravity", "box1_normal", "box2_normal", "box1_push"];
     const DESTINATION_MAP = {
         "box1_gravity": "index2.html", "box2_gravity": "index2.html", "box1_normal":  "index2.html", 
@@ -75,6 +85,10 @@ document.addEventListener('DOMContentLoaded', () => {
     let box1Vectors = [];
     let box2Vectors = [];
     let forceTextStamps = [];
+    
+    // ★操作履歴スタック (戻るボタン用)
+    // 中身: 'box1' または 'box2' の文字列を入れて、どの配列に追加したかを記録する
+    let actionHistory = [];
 
     let calculatedMass1 = 0.0, calculatedMass2 = 0.0;
     let showMassText = false;
@@ -111,11 +125,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- メインロジック ---
     
-    // ★修正: 引数 needLog を追加 (デフォルトは true = ログを送る)
+    // オブジェクト状態の初期化
     function createObjectStates(needLog = true) {
-        // ★リセットログ送信
+        // リセットログ送信
         try {
-            // needLog が true の場合のみ送信する
             if (needLog && ((box1Vectors && box1Vectors.length > 0) || (box2Vectors && box2Vectors.length > 0))) {
                 sendActionLog(0); 
             }
@@ -136,14 +149,39 @@ document.addEventListener('DOMContentLoaded', () => {
         
         isRunning = false;
         box1Vectors = []; box2Vectors = []; forceTextStamps = [];
+        actionHistory = []; // 履歴もリセット
         showMassText = false;
         calculatedMass1 = 0.0; calculatedMass2 = 0.0;
+    }
+
+    // ★ 1つ戻る処理
+    function undoLastAction() {
+        if (actionHistory.length === 0) return; // 履歴がなければ何もしない
+
+        // ログ送信 (タイプ2: 戻る)
+        try {
+            sendActionLog(2);
+        } catch (e) {
+            console.error("Log error:", e);
+        }
+
+        const lastTarget = actionHistory.pop(); // 最後の操作を取り出す
+
+        // 対応する配列から最後の要素を削除
+        if (lastTarget === 'box1') {
+            box1Vectors.pop();
+        } else if (lastTarget === 'box2') {
+            box2Vectors.pop();
+        }
+
+        // テキストスタンプも1つ消す (矢印と対になっているため)
+        forceTextStamps.pop();
     }
 
     function startSimulation() {
         if (isRunning) return;
 
-        // ★再生ログ送信（エラー対策済み）
+        // 再生ログ送信
         try {
             sendActionLog(1); 
         } catch (e) {
@@ -189,7 +227,6 @@ document.addEventListener('DOMContentLoaded', () => {
         validationTimer = setTimeout(() => {
             const checkResult = checkAnswerDetails(); 
             if (checkResult.isCorrect) {
-                // 正解ログ送信
                 try { sendToGoogleSheet(true); } catch(e) { console.error(e); }
                 setTimeout(() => { window.location.href = "end.html"; }, 500);
             } else {
@@ -239,9 +276,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             const remaining = MAX_ATTEMPTS - attemptCount;
             alert(`不正解です。\nあと${remaining}回間違えると、補助問題へ移動します。`);
-            
-            // ★修正: ここでは false (ログなし) を指定してリセット
-            createObjectStates(false);
+            createObjectStates(false); // 不正解リセット（ログなし）
         }
     }
 
@@ -265,7 +300,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         try { sendToGoogleSheet(false); } catch(e) { console.error(e); }
 
-        alert(`5回不正解となりました。\n適した補助問題へ移動します。`);
+        alert(`3回不正解となりました。\n適した補助問題へ移動します。`);
         window.location.href = destination;
     }
 
@@ -320,7 +355,10 @@ document.addEventListener('DOMContentLoaded', () => {
             ctx.fillText(`灰色の床がはかる重さ `, 10, 305); ctx.fillText(` ${calculatedMass1.toFixed(2)} kg`, 10, 330);
             ctx.fillText(`緑色の物体の上面がはかる重さ`, 10, 355); ctx.fillText(` ${calculatedMass2.toFixed(2)} kg`, 10, 380);
         }
+        
+        // 3つのボタンを描画
         drawButton(ctx, startButtonRect, START_BUTTON_COLOR_IDLE, "再生");
+        drawButton(ctx, undoButtonRect,  UNDO_BUTTON_COLOR_IDLE,  "1つ戻る");
         drawButton(ctx, resetButtonRect, RESET_BUTTON_COLOR_IDLE, "リセット");
     }
 
@@ -393,6 +431,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function handleStart(e) {
         e.preventDefault(); const p = getPos(e); currentMousePos = p; targetObject = null; isDrawingVector = false;
         if (isPointInRect(p, startButtonRect)) { startSimulation(); } 
+        else if (isPointInRect(p, undoButtonRect)) { undoLastAction(); } // 戻るボタン
         else if (isPointInRect(p, resetButtonRect)) { createObjectStates(); } 
         else if (box1.collidesWith(p)) { isDrawingVector = true; targetObject = box1; vectorStartPos = getNearestSnapPoint(p, box1); } 
         else if (box2.collidesWith(p)) { isDrawingVector = true; targetObject = box2; vectorStartPos = getNearestSnapPoint(p, box2); }
@@ -408,15 +447,23 @@ document.addEventListener('DOMContentLoaded', () => {
         const magText = `${(snappedMagnitude * FORCE_SCALE_FACTOR).toFixed(1)} N`;
         const snappedEndPosX = vectorStartPos.x + snappedComponents.vx;
         const snappedEndPosY = vectorStartPos.y + snappedComponents.vy;
+        
         forceTextStamps.push(new ForceText(magText, { x: snappedEndPosX + 15, y: snappedEndPosY + 15 }));
-        if (targetObject === box1) { box1Vectors.push(new ForceVector(vectorStartPos, snappedComponents.vx, snappedComponents.vy, color)); } 
-        else if (targetObject === box2) { box2Vectors.push(new ForceVector(vectorStartPos, snappedComponents.vx, snappedComponents.vy, color)); }
+        
+        if (targetObject === box1) { 
+            box1Vectors.push(new ForceVector(vectorStartPos, snappedComponents.vx, snappedComponents.vy, color)); 
+            actionHistory.push('box1'); // 履歴に追加
+        } else if (targetObject === box2) { 
+            box2Vectors.push(new ForceVector(vectorStartPos, snappedComponents.vx, snappedComponents.vy, color)); 
+            actionHistory.push('box2'); // 履歴に追加
+        }
         targetObject = null;
     }
     function handleMove(e) {
         e.preventDefault(); currentMousePos = getPos(e); const p = currentMousePos;
-        if (isPointInRect(p, startButtonRect) || isPointInRect(p, resetButtonRect)) { canvas.style.cursor = 'pointer'; } 
-        else { canvas.style.cursor = 'crosshair'; }
+        if (isPointInRect(p, startButtonRect) || isPointInRect(p, undoButtonRect) || isPointInRect(p, resetButtonRect)) { 
+            canvas.style.cursor = 'pointer'; 
+        } else { canvas.style.cursor = 'crosshair'; }
     }
     canvas.addEventListener('mousedown', handleStart, { passive: false }); canvas.addEventListener('touchstart', handleStart, { passive: false });
     canvas.addEventListener('mouseup', handleEnd, { passive: false }); canvas.addEventListener('touchend', handleEnd, { passive: false });

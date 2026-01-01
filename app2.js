@@ -16,15 +16,25 @@ document.addEventListener('DOMContentLoaded', () => {
     const VECTOR_COLORS = ['#000000']; 
     const FORCE_SCALE_FACTOR = 0.1;
 
-    // --- ボタン ---
-    const buttonWidth = 100, buttonHeight = 40, buttonPadding = 140;
-    const startButtonX = (SCREEN_WIDTH - (buttonWidth * 2 + buttonPadding)) / 2;
-    const startButtonY = SCREEN_HEIGHT - buttonHeight - 10;
-    const startButtonRect = { x: startButtonX, y: startButtonY, width: buttonWidth, height: buttonHeight };
-    const resetButtonRect = { x: startButtonX + buttonWidth + buttonPadding, y: startButtonY, width: buttonWidth, height: buttonHeight };
+    // --- ボタン設定 (3つ並べる) ---
+    const buttonWidth = 100, buttonHeight = 40;
+    const buttonGap = 50; // ボタン間の隙間
+    
+    // 3つのボタン全体の幅
+    const totalButtonWidth = (buttonWidth * 3) + (buttonGap * 2);
+    // 左端の開始位置
+    const startButtonBaseX = (SCREEN_WIDTH - totalButtonWidth) / 2;
+    const buttonY = SCREEN_HEIGHT - buttonHeight - 20;
+
+    // 各ボタンの矩形定義
+    const startButtonRect = { x: startButtonBaseX, y: buttonY, width: buttonWidth, height: buttonHeight };
+    const undoButtonRect  = { x: startButtonBaseX + buttonWidth + buttonGap, y: buttonY, width: buttonWidth, height: buttonHeight };
+    const resetButtonRect = { x: startButtonBaseX + (buttonWidth + buttonGap) * 2, y: buttonY, width: buttonWidth, height: buttonHeight };
+    
     const START_BUTTON_COLOR_IDLE = '#90EE90'; 
+    const UNDO_BUTTON_COLOR_IDLE  = '#FFD700'; // 黄色
     const RESET_BUTTON_COLOR_IDLE = '#ADD8E6'; 
-    const BUTTON_FONT = "bold 20px 'Meiryo', sans-serif";
+    const BUTTON_FONT = "bold 18px 'Meiryo', sans-serif";
     const INSTRUCTION_FONT = "16px 'Meiryo', sans-serif";
 
     // --- ★ログ設定（ここに入力してください） ---
@@ -87,6 +97,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- 関数 ---
+    
+    // オブジェクト状態の初期化
     function createObjectStates(needLog = true) {
         try {
             if (needLog && box1Vectors && box1Vectors.length > 0) {
@@ -107,12 +119,26 @@ document.addEventListener('DOMContentLoaded', () => {
         targetObject = null;
     }
 
+    // ★ 1つ戻る処理
+    function undoLastAction() {
+        if (box1Vectors.length === 0) return; // 矢印がなければ何もしない
+
+        // ログ送信 (タイプ2: 戻る)
+        try {
+            sendActionLog(2);
+        } catch (e) {
+            console.error("Log error:", e);
+        }
+
+        box1Vectors.pop();     // 最後の矢印を削除
+        forceTextStamps.pop(); // 対応するテキストも削除
+    }
+
     function startSimulation() {
         if (isRunning) return;
 
         try { sendActionLog(1); } catch (e) { console.error(e); }
 
-        // --- ★修正: 変数定義漏れを修正 ---
         const netForceVX1 = box1Vectors.reduce((sum, v) => sum + v.vx, 0);
         let netForceVY1 = box1Vectors.reduce((sum, v) => sum + v.vy, 0);
         let downwardVectors1 = box1Vectors.filter(v => v.vy > 0).reduce((sum, v) => sum + v.vy, 0);
@@ -121,7 +147,7 @@ document.addEventListener('DOMContentLoaded', () => {
         let netForceN_VX1 = netForceVX1 * FORCE_SCALE_FACTOR;
         let netForceN_VY1 = netForceVY1 * FORCE_SCALE_FACTOR;
         
-        // ここで質量計算用の上向きの力を定義（前回ここが抜けていました）
+        // 質量計算用の変数
         let netupwardVectors1 = upwardVectors1 * FORCE_SCALE_FACTOR; 
         
         let netForceN_VY1_pygame = -netForceN_VY1;
@@ -131,7 +157,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (Math.abs(netForceN_VX1) < 0.09 && Math.abs(netForceN_VY1) < 0.09) { box1.ax = 0; box1.ay = 0; }
 
-        // 質量の計算表示
         if (netForceN_VY1_pygame < 0) {
             calculatedMass1 = -1 * netupwardVectors1 / GRAVITY_ACCELERATION;
         } else if (netForceN_VY1_pygame >= 0 && netForceN_VY1_pygame < 0.09) {
@@ -203,11 +228,14 @@ document.addEventListener('DOMContentLoaded', () => {
             ctx.font = BUTTON_FONT; ctx.fillStyle = 'black'; 
             ctx.fillText(`灰色の床がはかる重さ: ${calculatedMass1.toFixed(2)} kg`, 10, 390);
         }
+        
+        // 3つのボタンを描画
         drawButton(ctx, startButtonRect, START_BUTTON_COLOR_IDLE, "再生");
+        drawButton(ctx, undoButtonRect,  UNDO_BUTTON_COLOR_IDLE,  "1つ戻る");
         drawButton(ctx, resetButtonRect, RESET_BUTTON_COLOR_IDLE, "リセット");
     }
 
-    // --- ヘルパー関数 ---
+    // --- ヘルパー関数群 ---
     function getSnapPoints(box) {
         const rect = box.initialRect; const cx = rect.x + rect.width / 2; const cy = rect.y + rect.height / 2;
         return [{ x: cx, y: cy }, { x: cx-12, y: rect.y+5 }, { x: cx+12, y: rect.y + rect.height -5}, { x: rect.x+5, y: cy }, { x: rect.x + rect.width-5, y: cy }];
@@ -272,9 +300,11 @@ document.addEventListener('DOMContentLoaded', () => {
         } return { x: basePos.x + offsetX, y: basePos.y + offsetY };
     }
 
+    // --- イベントリスナー ---
     function handleStart(e) {
         e.preventDefault(); const p = getPos(e); currentMousePos = p; targetObject = null; isDrawingVector = false;
         if (isPointInRect(p, startButtonRect)) { startSimulation(); } 
+        else if (isPointInRect(p, undoButtonRect)) { undoLastAction(); } // 戻る
         else if (isPointInRect(p, resetButtonRect)) { createObjectStates(); } 
         else if (box1.collidesWith(p)) { isDrawingVector = true; targetObject = box1; vectorStartPos = getNearestSnapPoint(p, box1); } 
     }
@@ -295,8 +325,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     function handleMove(e) {
         e.preventDefault(); currentMousePos = getPos(e); const p = currentMousePos;
-        if (isPointInRect(p, startButtonRect) || isPointInRect(p, resetButtonRect)) { canvas.style.cursor = 'pointer'; } 
-        else { canvas.style.cursor = 'crosshair'; }
+        if (isPointInRect(p, startButtonRect) || isPointInRect(p, undoButtonRect) || isPointInRect(p, resetButtonRect)) { 
+            canvas.style.cursor = 'pointer'; 
+        } else { canvas.style.cursor = 'crosshair'; }
     }
     canvas.addEventListener('mousedown', handleStart, { passive: false }); canvas.addEventListener('touchstart', handleStart, { passive: false });
     canvas.addEventListener('mouseup', handleEnd, { passive: false }); canvas.addEventListener('touchend', handleEnd, { passive: false });
@@ -340,6 +371,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch(e) { console.error(e); }
     }
 
+    // --- アニメーションループ ---
     function gameLoop() {
         updateSimulation();
         drawSimulation();

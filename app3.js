@@ -30,17 +30,25 @@ document.addEventListener('DOMContentLoaded', () => {
     const VECTOR_COLORS = ['#000000']; 
     const FORCE_SCALE_FACTOR = 0.1;
 
-    // --- ボタン ---
-    const buttonWidth = 100, buttonHeight = 40, buttonPadding = 140;
-    const startButtonX = (SCREEN_WIDTH - (buttonWidth * 2 + buttonPadding)) / 2;
-    const startButtonY = SCREEN_HEIGHT - buttonHeight - 10;
+    // --- ボタン設定 (3つ並べる) ---
+    const buttonWidth = 100, buttonHeight = 40;
+    const buttonGap = 50; // ボタン間の隙間
     
-    const startButtonRect = { x: startButtonX, y: startButtonY, width: buttonWidth, height: buttonHeight };
-    const resetButtonRect = { x: startButtonX + buttonWidth + buttonPadding, y: startButtonY, width: buttonWidth, height: buttonHeight };
+    // 3つのボタン全体の幅
+    const totalButtonWidth = (buttonWidth * 3) + (buttonGap * 2);
+    // 左端の開始位置
+    const startButtonBaseX = (SCREEN_WIDTH - totalButtonWidth) / 2;
+    const buttonY = SCREEN_HEIGHT - buttonHeight - 20;
+
+    // 各ボタンの矩形定義
+    const startButtonRect = { x: startButtonBaseX, y: buttonY, width: buttonWidth, height: buttonHeight };
+    const undoButtonRect  = { x: startButtonBaseX + buttonWidth + buttonGap, y: buttonY, width: buttonWidth, height: buttonHeight };
+    const resetButtonRect = { x: startButtonBaseX + (buttonWidth + buttonGap) * 2, y: buttonY, width: buttonWidth, height: buttonHeight };
     
     const START_BUTTON_COLOR_IDLE = '#90EE90'; 
+    const UNDO_BUTTON_COLOR_IDLE  = '#FFD700'; // 黄色
     const RESET_BUTTON_COLOR_IDLE = '#ADD8E6'; 
-    const BUTTON_FONT = "bold 20px 'Meiryo', sans-serif";
+    const BUTTON_FONT = "bold 18px 'Meiryo', sans-serif";
     const INSTRUCTION_FONT = "16px 'Meiryo', sans-serif";
 
     // --- ★ログ設定（ここに入力してください） ---
@@ -129,6 +137,21 @@ document.addEventListener('DOMContentLoaded', () => {
         showMassText = false;
         calculatedMass1 = 0.0;
         targetObject = null; 
+    }
+
+    // ★ 1つ戻る処理
+    function undoLastAction() {
+        if (box1Vectors.length === 0) return; // 矢印がなければ何もしない
+
+        // ログ送信 (タイプ2: 戻る)
+        try {
+            sendActionLog(2);
+        } catch (e) {
+            console.error("Log error:", e);
+        }
+
+        box1Vectors.pop();     // 最後の矢印を削除
+        forceTextStamps.pop(); // 対応するテキストも削除
     }
 
     function startSimulation() {
@@ -241,7 +264,10 @@ document.addEventListener('DOMContentLoaded', () => {
             ctx.font = BUTTON_FONT; ctx.fillStyle = 'black';
             ctx.fillText(`灰色の床がはかる重さ: ${calculatedMass1.toFixed(2)} kg`, 10, 390);
         }
+        
+        // 3つのボタンを描画
         drawButton(ctx, startButtonRect, START_BUTTON_COLOR_IDLE, "再生");
+        drawButton(ctx, undoButtonRect,  UNDO_BUTTON_COLOR_IDLE,  "1つ戻る");
         drawButton(ctx, resetButtonRect, RESET_BUTTON_COLOR_IDLE, "リセット");
     }
 
@@ -313,6 +339,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function handleStart(e) {
         e.preventDefault(); const p = getPos(e); currentMousePos = p; targetObject = null; isDrawingVector = false;
         if (isPointInRect(p, startButtonRect)) { startSimulation(); } 
+        else if (isPointInRect(p, undoButtonRect)) { undoLastAction(); } // 戻る
         else if (isPointInRect(p, resetButtonRect)) { createObjectStates(); } 
         else if (box1.collidesWith(p)) { isDrawingVector = true; targetObject = box1; vectorStartPos = getNearestSnapPoint(p, box1); } 
     }
@@ -333,8 +360,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     function handleMove(e) {
         e.preventDefault(); currentMousePos = getPos(e); const p = currentMousePos;
-        if (isPointInRect(p, startButtonRect) || isPointInRect(p, resetButtonRect)) { canvas.style.cursor = 'pointer'; } 
-        else { canvas.style.cursor = 'crosshair'; }
+        if (isPointInRect(p, startButtonRect) || isPointInRect(p, undoButtonRect) || isPointInRect(p, resetButtonRect)) { 
+            canvas.style.cursor = 'pointer'; 
+        } else { canvas.style.cursor = 'crosshair'; }
     }
     canvas.addEventListener('mousedown', handleStart, { passive: false }); canvas.addEventListener('touchstart', handleStart, { passive: false });
     canvas.addEventListener('mouseup', handleEnd, { passive: false }); canvas.addEventListener('touchend', handleEnd, { passive: false });
@@ -368,7 +396,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (!ACTION_LOG_URL) return;
             const userName = sessionStorage.getItem('physics_app_username') || "ゲスト";
-            
             const allVectors = [...box1Vectors];
             const vectorData = allVectors.map(v => ({
                 start: { x: v.startPos.x, y: v.startPos.y },
