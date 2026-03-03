@@ -38,7 +38,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const INSTRUCTION_FONT = "16px 'Meiryo', sans-serif";
 
     // --- ★ログ設定（ここに入力してください） ---
-    const ACTION_LOG_URL = "https://script.google.com/macros/s/AKfycbyEY0cnE-qSG1KH3UUXpaEmbu4OLATEz9Rd3rIcR2omKeKROYsHdYAVFMC_CBVVnDh1qg/exec"; 
+    const ACTION_LOG_URL = ""; 
     const APP_ID = 2;
 
     // --- 正解データ ---
@@ -380,4 +380,5 @@ document.addEventListener('DOMContentLoaded', () => {
 
     createObjectStates(); 
     gameLoop();           
+
 });
