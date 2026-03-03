@@ -38,8 +38,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const INSTRUCTION_FONT = "16px 'Meiryo', sans-serif";
 
     // --- ★ログ設定（ここに入力してください） ---
-    const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbymGS9vU-xHbfOrd8tHfyISyLSl3g1EI47OvQjqRDg94iX9ITwhAKvSOoujCQahLYuVEg/exec"; 
-    const ACTION_LOG_URL = "https://script.google.com/macros/s/AKfycbyEY0cnE-qSG1KH3UUXpaEmbu4OLATEz9Rd3rIcR2omKeKROYsHdYAVFMC_CBVVnDh1qg/exec"; 
+    const GOOGLE_SCRIPT_URL = ""; 
+    const ACTION_LOG_URL = ""; 
     const APP_ID = 1;
 
     // --- 正解データ設定 ---
@@ -515,4 +515,5 @@ document.addEventListener('DOMContentLoaded', () => {
 
     createObjectStates(); 
     gameLoop();           
+
 });
