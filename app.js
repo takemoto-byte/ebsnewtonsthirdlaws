@@ -38,8 +38,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const INSTRUCTION_FONT = "16px 'Meiryo', sans-serif";
 
     // --- ★ログ設定（ここに入力してください） ---
-    const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbymGS9vU-xHbfOrd8tHfyISyLSl3g1EI47OvQjqRDg94iX9ITwhAKvSOoujCQahLYuVEg/exec"; 
-    const ACTION_LOG_URL = "https://script.google.com/macros/s/AKfycbyEY0cnE-qSG1KH3UUXpaEmbu4OLATEz9Rd3rIcR2omKeKROYsHdYAVFMC_CBVVnDh1qg/exec"; 
+    const GOOGLE_SCRIPT_URL = ""; 
+    const ACTION_LOG_URL = ""; 
     const APP_ID = 1;
 
     // --- 正解データ設定 ---
@@ -62,10 +62,7 @@ document.addEventListener('DOMContentLoaded', () => {
     ];
 
     // --- ミス判定ロジック設定 ---
-    let MAX_ATTEMPTS = 3; 
-    if (sessionStorage.getItem('has_visited_sub') === 'true') {
-        MAX_ATTEMPTS = 5;
-    }
+    const MAX_ATTEMPTS = 3; 
     const PRIORITY_LIST = ["box1_gravity", "box2_gravity", "box1_normal", "box2_normal", "box1_push"];
     const DESTINATION_MAP = {
         "box1_gravity": "index2.html", "box2_gravity": "index2.html", "box1_normal":  "index2.html", 
@@ -89,16 +86,13 @@ document.addEventListener('DOMContentLoaded', () => {
     let box2Vectors = [];
     let forceTextStamps = [];
     
-    // 履歴スタック (戻るボタン用)
+    // ★操作履歴スタック (戻るボタン用)
     // 中身: 'box1' または 'box2' の文字列を入れて、どの配列に追加したかを記録する
     let actionHistory = [];
 
     let calculatedMass1 = 0.0, calculatedMass2 = 0.0;
     let showMassText = false;
 
-    // スクリショ保存用変数
-    let currentAttemptDataURL = null; 
-    let previousAttemptImage = null;
     // --- クラス定義 ---
     class PhysicsObject {
         constructor(x, y, w, h, m, c) {
@@ -130,51 +124,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- メインロジック ---
-    //  カスタムアラート関数（画面を暗くしない） 
-    function showCustomAlert(msg, callback) {
-        const existing = document.getElementById('customAlert');
-        if (existing) existing.remove();
-
-        const alertDiv = document.createElement('div');
-        alertDiv.id = 'customAlert';
-        alertDiv.style.position = 'fixed';
-        alertDiv.style.top = '20px'; // 画面上部から表示
-        alertDiv.style.left = '50%';
-        alertDiv.style.transform = 'translateX(-50%)';
-        alertDiv.style.backgroundColor = 'white';
-        alertDiv.style.border = '2px solid #ff6666';
-        alertDiv.style.borderRadius = '8px';
-        alertDiv.style.padding = '15px 30px';
-        alertDiv.style.boxShadow = '0 4px 15px rgba(0,0,0,0.2)';
-        alertDiv.style.zIndex = '2000';
-        alertDiv.style.textAlign = 'center';
-        alertDiv.style.fontFamily = BUTTON_FONT;
-        alertDiv.style.color = '#333';
-
-        const textDiv = document.createElement('div');
-        textDiv.innerHTML = msg.replace(/\n/g, '<br>');
-        textDiv.style.marginBottom = '15px';
-        textDiv.style.fontSize = '16px';
-        alertDiv.appendChild(textDiv);
-
-        const btn = document.createElement('button');
-        btn.innerText = "OK";
-        btn.style.padding = '8px 25px';
-        btn.style.fontSize = '16px';
-        btn.style.cursor = 'pointer';
-        btn.style.backgroundColor = '#ff6666';
-        btn.style.color = 'white';
-        btn.style.border = 'none';
-        btn.style.borderRadius = '5px';
-        btn.onclick = () => {
-            alertDiv.remove();
-            if (callback) callback(); // OKボタンを押した後の処理（画面遷移など）
-        };
-        alertDiv.appendChild(btn);
-
-        document.body.appendChild(alertDiv);
-    }    
-
+    
     // オブジェクト状態の初期化
     function createObjectStates(needLog = true) {
         // リセットログ送信
@@ -231,13 +181,6 @@ document.addEventListener('DOMContentLoaded', () => {
     function startSimulation() {
         if (isRunning) return;
 
-        // 合わせ鏡（スクショの中にスクショが写り込む）を防ぐ処理
-        const tempImg = previousAttemptImage; // 前回のスクショを一時退避
-        previousAttemptImage = null;          // 一旦非表示にする
-        drawSimulation();                     // スクショがない状態のキャンバスを再描画
-        currentAttemptDataURL = canvas.toDataURL(); // 純粋な作図だけをキャプチャ！
-        previousAttemptImage = tempImg;       // スクショの表示を元に戻す
-
         // 再生ログ送信
         try {
             sendActionLog(1); 
@@ -246,13 +189,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // --- 物理計算 ---
-        const bottomPos1 = getTargetPos(box1, 'bottom');
-        const bottomPos2 = getTargetPos(box2, 'bottom');
         const netForceVX1 = box1Vectors.reduce((sum, v) => sum + v.vx, 0);
         let netForceVY1 = box1Vectors.reduce((sum, v) => sum + v.vy, 0);
-        let upwardVectors1 = box1Vectors.filter(v => 
-            v.vy < 0 && Math.abs(v.startPos.y - bottomPos1.y) < 15.0
-        ).reduce((sum, v) => sum + v.vy, 0);
+        let upwardVectors1 = box1Vectors.filter(v => v.vy < 0).reduce((sum, v) => sum + v.vy, 0);
         let netForceN_VX1 = netForceVX1 * FORCE_SCALE_FACTOR;
         let netForceN_VY1 = netForceVY1 * FORCE_SCALE_FACTOR;
         let netForceN_VY1_pygame = -netForceN_VY1;
@@ -267,9 +206,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         const netForceVX2 = box2Vectors.reduce((sum, v) => sum + v.vx, 0);
         let netForceVY2 = box2Vectors.reduce((sum, v) => sum + v.vy, 0);
-        let upwardVectors2 = box2Vectors.filter(v => 
-            v.vy < 0 && Math.abs(v.startPos.y - bottomPos2.y) < 15.0
-        ).reduce((sum, v) => sum + v.vy, 0);
+        let upwardVectors2 = box2Vectors.filter(v => v.vy < 0).reduce((sum, v) => sum + v.vy, 0);
         let netForceN_VX2 = netForceVX2 * FORCE_SCALE_FACTOR;
         let netForceN_VY2 = netForceVY2 * FORCE_SCALE_FACTOR;
         let netForceN_VY2_pygame = -netForceN_VY2;
@@ -334,18 +271,11 @@ document.addEventListener('DOMContentLoaded', () => {
             if (totalSessionErrors.hasOwnProperty(id)) totalSessionErrors[id]++; else totalSessionErrors[id] = 1;
         });
 
-        // ★ 不正解が確定したので、一時保存したスクショを「前回作図」としてセット
-        if (currentAttemptDataURL) {
-            previousAttemptImage = new Image();
-            previousAttemptImage.src = currentAttemptDataURL;
-        }
-
         if (attemptCount >= MAX_ATTEMPTS) {
             analyzeAndRedirect();
         } else {
             const remaining = MAX_ATTEMPTS - attemptCount;
-            // ★ alert を showCustomAlert に変更
-            showCustomAlert(`不正解です。\nあと${remaining}回間違えると、この問題を考えるためのヒントとなる補助問題へ移動します。`);
+            alert(`不正解です。\nあと${remaining}回間違えると、補助問題へ移動します。`);
             createObjectStates(false); // 不正解リセット（ログなし）
         }
     }
@@ -353,11 +283,8 @@ document.addEventListener('DOMContentLoaded', () => {
     function analyzeAndRedirect() {
         const errorIds = Object.keys(missingVectorCounts);
         if (errorIds.length === 0) {
-            // ★ alert を showCustomAlert に変更（OKを押した後に遷移）
-            showCustomAlert("余計な力が描かれています。基礎から復習しましょう。", () => {
-                sessionStorage.setItem('has_visited_sub', 'true');
-                window.location.href = "index2.html";
-            });
+            alert("余計な力が描かれています。基礎から復習しましょう。");
+            window.location.href = "index2.html";
             return;
         }
         errorIds.sort((a, b) => {
@@ -373,12 +300,8 @@ document.addEventListener('DOMContentLoaded', () => {
         
         try { sendToGoogleSheet(false); } catch(e) { console.error(e); }
 
-        sessionStorage.setItem('has_visited_sub', 'true'); 
-        
-        // ★ alert を showCustomAlert に変更
-        showCustomAlert(`${MAX_ATTEMPTS}回不正解となりました。\n適した補助問題へ移動します。`, () => {
-            window.location.href = destination;
-        });
+        alert(`3回不正解となりました。\n適した補助問題へ移動します。`);
+        window.location.href = destination;
     }
 
     function updateSimulation() {
@@ -400,9 +323,6 @@ document.addEventListener('DOMContentLoaded', () => {
         
         box1.draw(ctx); box2.draw(ctx);
         
-        drawSnapPoints(ctx, box1, 'rgba(0, 200, 0, 0.4)'); // 緑色の半透明
-        drawSnapPoints(ctx, box2, 'rgba(200, 0, 0, 0.4)'); // 赤色の半透明
-
         const startPosCounts = {}; 
         const drawWithOffset = (vectorList) => {
             vectorList.forEach(v => {
@@ -440,24 +360,6 @@ document.addEventListener('DOMContentLoaded', () => {
         drawButton(ctx, startButtonRect, START_BUTTON_COLOR_IDLE, "再生");
         drawButton(ctx, undoButtonRect,  UNDO_BUTTON_COLOR_IDLE,  "1つ戻る");
         drawButton(ctx, resetButtonRect, RESET_BUTTON_COLOR_IDLE, "リセット");
-
-        // ★ 追加：直前の作図スクリーンショットを表示（右上の学習者名の下あたり）
-        if (previousAttemptImage) {
-            const scale = 0.37; // 縮小表示
-            const w = SCREEN_WIDTH * scale;
-            const h = SCREEN_HEIGHT * scale;
-            const x = SCREEN_WIDTH - w - 10; 
-            const y = 150; 
-
-            ctx.drawImage(previousAttemptImage, x, y, w, h);
-            ctx.strokeStyle = '#ff0000'; // 赤枠で目立たせる
-            ctx.lineWidth = 2;
-            ctx.strokeRect(x, y, w, h);
-
-            ctx.fillStyle = 'red';
-            ctx.font = "bold 14px 'Meiryo', sans-serif";
-            ctx.fillText("直前の作図", x+35, y - 10);
-        }
     }
 
     // --- ヘルパー関数群 ---
@@ -524,16 +426,7 @@ document.addEventListener('DOMContentLoaded', () => {
             case 'right': basePos = { x: r.x + r.width, y: cy }; break; default: basePos = { x: cx, y: cy }; break;
         } return { x: basePos.x + offsetX, y: basePos.y + offsetY };
     }
-    // 作用点（スナップポイント）に半透明の円を描画する関数
-    function drawSnapPoints(ctx, box, color) {
-        const snapPoints = getSnapPoints(box);
-        ctx.fillStyle = color;
-        snapPoints.forEach(p => {
-            ctx.beginPath();
-            ctx.arc(p.x, p.y, 8, 0, Math.PI * 2); // 半径8の円を描画（大きさは好みで調整してください）
-            ctx.fill();
-        });
-    }
+
     // --- イベントリスナー ---
     function handleStart(e) {
         e.preventDefault(); const p = getPos(e); currentMousePos = p; targetObject = null; isDrawingVector = false;
@@ -622,4 +515,5 @@ document.addEventListener('DOMContentLoaded', () => {
 
     createObjectStates(); 
     gameLoop();           
+
 });
