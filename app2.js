@@ -38,7 +38,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const INSTRUCTION_FONT = "16px 'Meiryo', sans-serif";
 
     // --- ★ログ設定（ここに入力してください） ---
-    const ACTION_LOG_URL = ""; 
+    const ACTION_LOG_URL = "https://script.google.com/macros/s/AKfycbyEY0cnE-qSG1KH3UUXpaEmbu4OLATEz9Rd3rIcR2omKeKROYsHdYAVFMC_CBVVnDh1qg/exec"; 
     const APP_ID = 2;
 
     // --- 正解データ ---
@@ -64,8 +64,6 @@ document.addEventListener('DOMContentLoaded', () => {
     let box1Vectors = [];
     let forceTextStamps = [];
     let calculatedMass1 = 0.0;
-    let currentAttemptDataURL = null; 
-    let previousAttemptImage = null;
     let showMassText = false;
 
     // --- クラス ---
@@ -99,50 +97,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- 関数 ---
-    // カスタムアラート関数（画面を暗くしない） 
-    function showCustomAlert(msg, callback) {
-        const existing = document.getElementById('customAlert');
-        if (existing) existing.remove();
-
-        const alertDiv = document.createElement('div');
-        alertDiv.id = 'customAlert';
-        alertDiv.style.position = 'fixed';
-        alertDiv.style.top = '20px'; 
-        alertDiv.style.left = '50%';
-        alertDiv.style.transform = 'translateX(-50%)';
-        alertDiv.style.backgroundColor = 'white';
-        alertDiv.style.border = '2px solid #ff6666';
-        alertDiv.style.borderRadius = '8px';
-        alertDiv.style.padding = '15px 30px';
-        alertDiv.style.boxShadow = '0 4px 15px rgba(0,0,0,0.2)';
-        alertDiv.style.zIndex = '2000';
-        alertDiv.style.textAlign = 'center';
-        alertDiv.style.fontFamily = BUTTON_FONT;
-        alertDiv.style.color = '#333';
-
-        const textDiv = document.createElement('div');
-        textDiv.innerHTML = msg.replace(/\n/g, '<br>');
-        textDiv.style.marginBottom = '15px';
-        textDiv.style.fontSize = '16px';
-        alertDiv.appendChild(textDiv);
-
-        const btn = document.createElement('button');
-        btn.innerText = "OK";
-        btn.style.padding = '8px 25px';
-        btn.style.fontSize = '16px';
-        btn.style.cursor = 'pointer';
-        btn.style.backgroundColor = '#ff6666';
-        btn.style.color = 'white';
-        btn.style.border = 'none';
-        btn.style.borderRadius = '5px';
-        btn.onclick = () => {
-            alertDiv.remove();
-            if (callback) callback(); 
-        };
-        alertDiv.appendChild(btn);
-
-        document.body.appendChild(alertDiv);
-    } 
+    
     // オブジェクト状態の初期化
     function createObjectStates(needLog = true) {
         try {
@@ -181,14 +136,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function startSimulation() {
         if (isRunning) return;
-        
-        // 合わせ鏡を防ぎつつ作図状態を保存
-        const tempImg = previousAttemptImage; 
-        previousAttemptImage = null;          
-        drawSimulation();                     
-        currentAttemptDataURL = canvas.toDataURL(); 
-        previousAttemptImage = tempImg;
-        
+
         try { sendActionLog(1); } catch (e) { console.error(e); }
 
         const netForceVX1 = box1Vectors.reduce((sum, v) => sum + v.vx, 0);
@@ -285,24 +233,6 @@ document.addEventListener('DOMContentLoaded', () => {
         drawButton(ctx, startButtonRect, START_BUTTON_COLOR_IDLE, "再生");
         drawButton(ctx, undoButtonRect,  UNDO_BUTTON_COLOR_IDLE,  "1つ戻る");
         drawButton(ctx, resetButtonRect, RESET_BUTTON_COLOR_IDLE, "リセット");
-
-        // ★ 追加：直前の作図スクリーンショットを表示
-        if (previousAttemptImage) {
-            const scale = 0.37; // 縮小表示
-            const w = SCREEN_WIDTH * scale;
-            const h = SCREEN_HEIGHT * scale;
-            const x = SCREEN_WIDTH - w - 10; 
-            const y = 150; 
-
-            ctx.drawImage(previousAttemptImage, x, y, w, h);
-            ctx.strokeStyle = '#ff0000'; // 赤枠で目立たせる
-            ctx.lineWidth = 2;
-            ctx.strokeRect(x, y, w, h);
-
-            ctx.fillStyle = 'red';
-            ctx.font = "bold 14px 'Meiryo', sans-serif";
-            ctx.fillText("直前の作図", x+35, y - 10);
-        }
     }
 
     // --- ヘルパー関数群 ---
@@ -403,112 +333,24 @@ document.addEventListener('DOMContentLoaded', () => {
     canvas.addEventListener('mouseup', handleEnd, { passive: false }); canvas.addEventListener('touchend', handleEnd, { passive: false });
     canvas.addEventListener('mousemove', handleMove, { passive: false }); canvas.addEventListener('touchmove', handleMove, { passive: false });
 
-// --- 正誤判定と誤概念スキャン ---
     function checkAnswer() {
         let allCorrect = true;
         CORRECT_ANSWERS.forEach(answerSet => {
             let userVectors = []; let targetBox = null;
             if (answerSet.objectId === 'box1') { userVectors = box1Vectors; targetBox = box1; } 
-            
-            if (userVectors.length !== answerSet.vectors.length) { 
-                allCorrect = false; 
-            }
-            
+            if (userVectors.length !== answerSet.vectors.length) { allCorrect = false; return; }
             let remainingUserVectors = [...userVectors];
             answerSet.vectors.forEach(correctVec => {
                 const correctStartPos = getTargetPos(targetBox, correctVec.startPosType);
                 const foundIndex = remainingUserVectors.findIndex(uVec => {
                     const uFx_N = uVec.vx * FORCE_SCALE_FACTOR; const uFy_N = uVec.vy * FORCE_SCALE_FACTOR;
-                    return Math.abs(uFx_N - correctVec.fx) < 0.2 && 
-                           Math.abs(uFy_N - correctVec.fy) < 0.2 && 
-                           Math.abs(uVec.startPos.x - correctStartPos.x) < 5.0 && 
-                           Math.abs(uVec.startPos.y - correctStartPos.y) < 5.0;
+                    return Math.abs(uFx_N - correctVec.fx) < 0.2 && Math.abs(uFy_N - correctVec.fy) < 0.2 && Math.abs(uVec.startPos.x - correctStartPos.x) < 5.0 && Math.abs(uVec.startPos.y - correctStartPos.y) < 5.0;
                 });
-                if (foundIndex !== -1) { 
-                    remainingUserVectors.splice(foundIndex, 1); 
-                } else { 
-                    allCorrect = false; 
-                }
+                if (foundIndex !== -1) { remainingUserVectors.splice(foundIndex, 1); } else { allCorrect = false; }
             });
         });
-
-        if (allCorrect) { 
-            generalErrorCount = 0; // 正解したらリセット
-            // ★ alert を showCustomAlert に変更
-            showCustomAlert("正解です！次の補助問題に移行します。", () => {
-                window.location.href = "index3.html"; 
-            });
-            return true; 
-        } else { 
-            const userVectors = box1Vectors;
-
-            // ★ 追加：不正解が確定したので、一時保存したスクショを「前回作図」としてセット
-            if (currentAttemptDataURL) {
-                previousAttemptImage = new Image();
-                previousAttemptImage.src = currentAttemptDataURL;
-            }
-            
-            // --- ★誤概念の診断・専用フィードバックロジック ---
-
-            const centerPos = getTargetPos(box1, 'center');
-            const bottomPos = getTargetPos(box1, 'bottom');
-            
-            // 【パターン1の判定】
-            const hasCorrectGravity = userVectors.some(v => {
-                const uFx = v.vx * FORCE_SCALE_FACTOR;
-                const uFy = v.vy * FORCE_SCALE_FACTOR;
-                return Math.abs(uFx - 0) < 0.2 && Math.abs(uFy - 15) < 0.2 &&
-                       Math.abs(v.startPos.x - centerPos.x) < 5.0 && Math.abs(v.startPos.y - centerPos.y) < 5.0;
-            });
-
-            const hasUpwardForceFromCenter = userVectors.some(v => {
-                const uFx = v.vx * FORCE_SCALE_FACTOR;
-                const uFy = v.vy * FORCE_SCALE_FACTOR;
-                return Math.abs(uFx - 0) < 0.2 && Math.abs(uFy - (-15)) < 0.2 &&
-                       Math.abs(v.startPos.x - centerPos.x) < 5.0 && Math.abs(v.startPos.y - centerPos.y) < 5.0;
-            });
-
-            if (hasCorrectGravity && hasUpwardForceFromCenter) {
-                generalErrorCount = 0; 
-                // ★ alert を showCustomAlert に変更
-                showCustomAlert("ヒント：はたらいている力の大きさと向きはいいですね！上向きの力は物体の中心からはたらくのであってますか？上向きの力は何という力かも思い出してもう一度作図しましょう！");
-                return false;
-            }
-
-            // 【パターン2の判定】
-            const hasCorrectNormalForce = userVectors.some(v => {
-                const uFx = v.vx * FORCE_SCALE_FACTOR;
-                const uFy = v.vy * FORCE_SCALE_FACTOR;
-                return Math.abs(uFx - 0) < 0.2 && Math.abs(uFy - (-15)) < 0.2 &&
-                       Math.abs(v.startPos.x - bottomPos.x) < 20.0 && Math.abs(v.startPos.y - bottomPos.y) < 10.0;
-            });
-
-            const hasDownwardForceFromBottom = userVectors.some(v => {
-                const uFx = v.vx * FORCE_SCALE_FACTOR;
-                const uFy = v.vy * FORCE_SCALE_FACTOR;
-                return Math.abs(uFx - 0) < 0.2 && Math.abs(uFy - 15) < 0.2 &&
-                       Math.abs(v.startPos.x - bottomPos.x) < 20.0 && Math.abs(v.startPos.y - bottomPos.y) < 10.0;
-            });
-
-            if (hasCorrectNormalForce && hasDownwardForceFromBottom) {
-                generalErrorCount = 0; 
-                // ★ alert を showCustomAlert に変更
-                showCustomAlert("ヒント：はたらいている力の大きさと向きはいいですね！下向きの力は床との接触面からはたらくのであってますか？下向きの力は何という力かも思い出してもう一度作図しましょう！");
-                return false;
-            }
-
-            // --- ★上記以外の一般的な誤りが続いた場合の処理 ---
-            generalErrorCount++;
-            
-            if (generalErrorCount >= 5) {
-                generalErrorCount = 0; 
-                showHintQuizModal(1);  
-            } else {
-                // ★ alert を showCustomAlert に変更
-                showCustomAlert("不正解です。作図の大きさや向き、位置を見直してみましょう。"); 
-            }
-            return false; 
-        }
+        if (allCorrect) { alert("正解です！"); window.location.href = "index3.html"; return true; } 
+        else { alert("不正解です。"); return false; }
     }
 
     function sendActionLog(actionType) {
@@ -538,5 +380,4 @@ document.addEventListener('DOMContentLoaded', () => {
 
     createObjectStates(); 
     gameLoop();           
-
 });
