@@ -39,7 +39,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- ★ログ設定（ここに入力してください） ---
     const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbymGS9vU-xHbfOrd8tHfyISyLSl3g1EI47OvQjqRDg94iX9ITwhAKvSOoujCQahLYuVEg/exec"; 
-    const ACTION_LOG_URL = "https://script.google.com/macros/s/AKfycbwIAZivB3srx3SrP6ZfN2zWYHerD5fqfBLx92pyxbgjWNtJXFiRAHC8b3d5cAPeTijk/exec"; 
+    const ACTION_LOG_URL = "https://script.google.com/macros/s/AKfycbyEY0cnE-qSG1KH3UUXpaEmbu4OLATEz9Rd3rIcR2omKeKROYsHdYAVFMC_CBVVnDh1qg/exec"; 
     const APP_ID = 1;
 
     // --- 正解データ設定 ---
