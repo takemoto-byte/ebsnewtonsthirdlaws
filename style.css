@@ -6,16 +6,7 @@ body {
     margin: 0; /* <--- 0に変更 */
     font-family: 'Meiryo', 'Hiragino Kaku Gothic ProN', sans-serif;
 }
-/* 画面全体（背景）の設定 */
-html, body {
-    margin: 0;
-    padding: 0;
-    width: 100%;
-    height: 100%;
-    overflow: hidden; /* スクロールを完全に禁止 */
-    overscroll-behavior: none; /* 下に引っ張ってリロード（Pull-to-Refresh）を無効化 */
-    touch-action: none; /* ダブルタップズームやスワイプなどの標準タッチ操作を無効化 */
-}
+
 canvas {
     border: 1px solid #333;
     background-color: white; /* JSで塗っていますが念のため */
